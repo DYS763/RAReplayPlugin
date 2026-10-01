@@ -13,7 +13,8 @@ if (@($tracked | Where-Object { $_ -match '\.(?:idb|i64|id0|id1|pdb|map|yrrep|pa
     throw 'Git 跟踪文件含数据库、映射或回放产物'
 }
 $ownText = @($tracked | Where-Object {
-    $_ -notlike 'third_party/*' -and $_ -match '\.(?:cpp|h|cs|ps1|md|txt|json|xml|props)$'
+    $_ -notlike 'third_party/*' -and $_ -ne 'scripts/check-publication.ps1' -and
+    $_ -match '\.(?:cpp|h|cs|ps1|md|txt|json|xml|props)$'
 })
 foreach ($relative in $ownText) {
     $content = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $repo $relative)
