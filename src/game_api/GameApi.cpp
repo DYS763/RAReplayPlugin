@@ -251,6 +251,13 @@ bool GameApi::CanControlViewerPlaybackSpeed() const noexcept
     return SessionClass::Instance.GameMode == GameMode::Skirmish;
 }
 
+std::uint32_t GameApi::GetDesiredFrameRate() const noexcept
+{
+    return SessionClass::Instance.DesiredFrameRate > 0
+        ? static_cast<std::uint32_t>(SessionClass::Instance.DesiredFrameRate)
+        : 0;
+}
+
 void GameApi::BeforeNativeEventExecution()
 {
     // ProcessNetworkFrame 在调用 handleAny 前写入当前帧 CRC；离线分支无此保证。

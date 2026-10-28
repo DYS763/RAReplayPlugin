@@ -30,6 +30,7 @@ public:
     bool TrySetViewerPlaybackSpeed(int setting) noexcept;
     bool TryGetViewerPlaybackSpeed(int& outSetting) const noexcept;
     bool CanControlViewerPlaybackSpeed() const noexcept;
+    std::uint32_t GetDesiredFrameRate() const noexcept;
     static void InvokeNativeFrameParser();
     static bool InvokeNativePreworldWait();
     /** 仅在已验证目标的 InitRandom 选种后、任一 RNG 初始化前的游戏线程调用；不要求世界就绪。 */
