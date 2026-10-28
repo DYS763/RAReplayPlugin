@@ -13,10 +13,13 @@ using byte = unsigned char;
 #include <ScenarioClass.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdio>
 #include <filesystem>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <system_error>
 #include <string_view>
 
@@ -26,11 +29,73 @@ namespace
 {
 constexpr wchar_t SNAPSHOT_DESCRIPTION[] = L"RAReplay checkpoint";
 constexpr std::size_t MAX_SNAPSHOT_PATH_BYTES = 512;
+constexpr std::size_t GAME_FILENAME_BUFFER_CHARS = 64;
 
 void SetError(std::string& error, const char* message)
 {
     error = message;
 }
+
+std::string MakeReplayToken(const std::string& replayName)
+{
+    // SaveGame's internal ANSI-to-wide conversion accepts only a short name.
+    // A stable token keeps snapshots from different replays separate while
+    // leaving enough room for the frame number and extension.
+    std::uint32_t hash = 2166136261u;
+    for (const unsigned char character : replayName)
+    {
+        hash ^= character;
+        hash *= 16777619u;
+    }
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0') << std::setw(8) << hash;
+    return stream.str();
+}
+
+template <typename Invoke>
+bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
+    Invoke&& invoke, std::string& error)
+{
+    const auto fileName = snapshotPath.filename().string();
+    if (fileName.empty() || fileName.size() >= GAME_FILENAME_BUFFER_CHARS)
+    {
+        SetError(error, "Replay world snapshot filename is too long for target game");
+        return false;
+    }
+
+    std::array<wchar_t, MAX_PATH> previousDirectory{};
+    const DWORD previousLength = GetCurrentDirectoryW(
+        static_cast<DWORD>(previousDirectory.size()), previousDirectory.data());
+    if (previousLength == 0 || previousLength >= previousDirectory.size())
+    {
+        SetError(error, "Unable to read target game working directory");
+        return false;
+    }
+    if (!SetCurrentDirectoryW(snapshotPath.parent_path().c_str()))
+    {
+        SetError(error, "Unable to enter replay directory for world snapshot");
+        return false;
+    }
+
+    const bool result = invoke(fileName.c_str());
+    const DWORD restoreError = SetCurrentDirectoryW(previousDirectory.data()) ? ERROR_SUCCESS : GetLastError();
+    if (!result)
+    {
+        error = "Target game rejected replay world snapshot file: " + snapshotPath.string();
+        if (restoreError != ERROR_SUCCESS)
+            error += " (also failed to restore working directory, error " + std::to_string(restoreError) + ")";
+        return false;
+    }
+    if (restoreError != ERROR_SUCCESS)
+    {
+        error = "Unable to restore target game working directory (error " +
+            std::to_string(restoreError) + ")";
+        return false;
+    }
+    error.clear();
+    return true;
+}
+
 }
 
 ReplayWorldSnapshotStore::~ReplayWorldSnapshotStore()
@@ -141,9 +206,11 @@ bool ReplayWorldSnapshotStore::RequestRestore(std::uint32_t targetFrame, std::st
         SetError(error, "No replay world snapshot is available for the target frame");
         return false;
     }
-    if (!ScenarioClass::LoadGame(record->mPath.c_str()))
+    std::string invokeError;
+    if (!InvokeWithSnapshotDirectory(record->mPath,
+            [](const char* fileName) { return ScenarioClass::LoadGame(fileName); }, invokeError))
     {
-        SetError(error, "Target game rejected replay world snapshot load");
+        error = invokeError.empty() ? "Target game rejected replay world snapshot load" : invokeError;
         return false;
     }
     mPendingRestore = record;
@@ -213,9 +280,13 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
         SetError(error, "Replay world snapshot path is too long");
         return false;
     }
-    if (!ScenarioClass::SaveGame(path.c_str(), SNAPSHOT_DESCRIPTION, false))
+    std::string invokeError;
+    if (!InvokeWithSnapshotDirectory(snapshotPath,
+            [](const char* fileName) {
+                return ScenarioClass::SaveGame(fileName, SNAPSHOT_DESCRIPTION, false);
+            }, invokeError))
     {
-        SetError(error, "Target game rejected replay world snapshot save");
+        error = invokeError.empty() ? "Target game rejected replay world snapshot save" : invokeError;
         return false;
     }
     std::error_code fileError;
@@ -263,7 +334,8 @@ bool ReplayWorldSnapshotStore::PrepareDirectory(const std::filesystem::path& rep
             (filesystemError ? filesystemError.message() : std::string("path is not a directory"));
         return false;
     }
-    const auto prefix = replayPath.filename().string() + ".snapshot_";
+    const auto replayName = replayPath.filename().string();
+    const auto prefix = "RRP_" + MakeReplayToken(replayName) + "_";
     if (prefix.empty() || prefix.size() >= MAX_SNAPSHOT_PATH_BYTES)
     {
         SetError(error, "Replay world snapshot filename prefix is too long");
