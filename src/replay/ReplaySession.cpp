@@ -309,6 +309,36 @@ bool ReplaySession::ProcessPlaybackFrame()
     return true;
 }
 
+bool ReplaySession::SeekPlayback(std::uint32_t frameNumber, std::string& error)
+{
+    if (mState != ReplayState::Playing || mSource == nullptr)
+    {
+        error = "Replay playback is not seekable in the current state";
+        return false;
+    }
+    if (!mSource->SeekFrame(frameNumber, error))
+    {
+        if (error.empty())
+            error = "Replay source rejected the seek target";
+        return false;
+    }
+    mNextFrame = frameNumber;
+    mLastProcessedFrame = UINT64_MAX;
+    mReadyFrame = {};
+    mHasReadyFrame = false;
+    mHasAppliedInputEffects = false;
+    mLastError.clear();
+    return true;
+}
+
+std::optional<std::uint32_t> ReplaySession::GetCurrentPlaybackFrame() const noexcept
+{
+    if (mState != ReplayState::Playing || mLastProcessedFrame == UINT64_MAX ||
+        mLastProcessedFrame > UINT32_MAX)
+        return std::nullopt;
+    return static_cast<std::uint32_t>(mLastProcessedFrame);
+}
+
 bool ReplaySession::Finish()
 {
     if (mState != ReplayState::Recording)

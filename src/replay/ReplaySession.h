@@ -3,6 +3,7 @@
 #include "ReplayPorts.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace rareplay::replay
@@ -34,6 +35,9 @@ public:
     bool OnFrameEnd();
     /** 播放开始后始终返回 true，要求调用方绕过真实网络路径。 */
     bool ProcessPlaybackFrame();
+    /** 世界已恢复到目标帧后，重置源读取和当前帧状态。 */
+    bool SeekPlayback(std::uint32_t frameNumber, std::string& error);
+    std::optional<std::uint32_t> GetCurrentPlaybackFrame() const noexcept;
     bool Finish();
     void Stop();
 

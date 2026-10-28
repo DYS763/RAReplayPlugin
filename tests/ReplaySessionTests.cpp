@@ -152,6 +152,17 @@ public:
         outFrame = mFrames[mIndex++];
         return ReplayReadResult::Frame;
     }
+    bool SeekFrame(std::uint32_t frameNumber, std::string& error) override
+    {
+        if (frameNumber >= mFrames.size())
+        {
+            error = "seek target is outside fake source";
+            return false;
+        }
+        mIndex = frameNumber;
+        error.clear();
+        return true;
+    }
 };
 
 void TestRecordCompleteFramesOnly()
@@ -253,10 +264,18 @@ void TestPlaybackEndAndNoLiveFallback()
         game.mPhases[1] == "discardCommands" && game.mPhases[2] == "executeFrame" &&
         game.mPhases[3] == "applyEffects" && game.mPhases[4] == "discardCommands" &&
         game.mPhases[5] == "executeFrame", "effects must apply once before Logic execution");
+    std::string seekError;
+    Require(session.SeekPlayback(0, seekError) && !session.GetCurrentPlaybackFrame(),
+        "playback seek should reset the processed-frame state");
+    game.mFrame = 0;
+    Require(session.OnFrameBegin() && session.OnBeforeSimulation() &&
+        session.ProcessPlaybackFrame() && game.mExecuted.size() == 3 &&
+        session.GetCurrentPlaybackFrame() && *session.GetCurrentPlaybackFrame() == 0,
+        "playback should execute again from the relocated source frame");
     game.mFrame = 2;
     Require(session.OnFrameBegin() && session.GetState() == ReplayState::Finished &&
-        game.mEndCount == 1 && source.mReadCount == 3 &&
-        game.mExecuted.size() == 2 && session.OnFrameBegin() && source.mReadCount == 3 &&
+        game.mEndCount == 1 && source.mReadCount == 4 &&
+        game.mExecuted.size() == 3 && session.OnFrameBegin() && source.mReadCount == 4 &&
         session.ProcessPlaybackFrame(),
         "EOF at next frame begin must end game before parser or another simulation");
 }
