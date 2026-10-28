@@ -3,7 +3,9 @@
 #include "../src/storage/FrameWriter.h"
 #include "../src/replay/FrameCodec.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
 #include <algorithm>
