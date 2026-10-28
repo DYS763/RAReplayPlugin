@@ -209,15 +209,21 @@ public:
         if (mSeekTargetFrame && mSession.GetCurrentPlaybackFrame() &&
             *mSession.GetCurrentPlaybackFrame() >= *mSeekTargetFrame)
         {
+            RestoreSeekSpeed();
+            char message[160]{};
+            std::snprintf(message, sizeof(message),
+                "Replay seek completed: frame=%u", *mSeekTargetFrame);
+            Log(message);
             mSeekTargetFrame.reset();
         }
         if (mSession.GetState() != replay::ReplayState::Playing)
-            mSeekTargetFrame.reset();
+            ResetSeekState();
         return true;
     }
 
     void Finish()
     {
+        ResetSeekState();
         if (IsPlayback())
             mOverlayDiagnostics.Report(true);
         mViewPublisher.End();
@@ -236,6 +242,7 @@ public:
 
     void FailUnexpected()
     {
+        ResetSeekState();
         mViewPublisher.End();
         mSnapshotStore.End();
         mSession.Stop();
@@ -294,17 +301,58 @@ private:
             Log(error.empty() ? "Unable to read current frame for replay seek" : error.c_str());
             return;
         }
+        char requestMessage[192]{};
+        std::snprintf(requestMessage, sizeof(requestMessage),
+            "Replay seek requested: current=%u target=%u total=%u snapshots=%zu",
+            currentFrame, targetFrame, *totalFrames, mSnapshotStore.GetRecords().size());
+        Log(requestMessage);
         if (targetFrame == currentFrame)
         {
-            mSeekTargetFrame.reset();
+            ResetSeekState();
             return;
         }
+
+        // 新目标取代旧目标；恢复原速度后再决定是否进入新的追帧阶段。
+        ResetSeekState();
         mSeekTargetFrame = targetFrame;
-        if (targetFrame < currentFrame && !mSnapshotStore.RequestRestore(targetFrame, error))
+        if (targetFrame < currentFrame)
         {
-            mSeekTargetFrame.reset();
-            Log(error.empty() ? "Replay backward seek was rejected" : error.c_str());
+            if (!mSnapshotStore.RequestRestore(targetFrame, error))
+            {
+                ResetSeekState();
+                Log(error.empty() ? "Replay backward seek was rejected" : error.c_str());
+                return;
+            }
+            Log("Replay backward seek snapshot load requested");
+            return;
         }
+
+        int currentSpeed = 0;
+        if (mGame.TryGetViewerPlaybackSpeed(currentSpeed) && currentSpeed != 0 &&
+            mGame.TrySetViewerPlaybackSpeed(0))
+        {
+            mSeekRestoreSpeed = currentSpeed;
+            Log("Replay forward seek entered fast-forward mode");
+        }
+        else
+        {
+            Log("Replay forward seek running at current playback speed");
+    }
+
+    void RestoreSeekSpeed() noexcept
+    {
+        if (!mSeekRestoreSpeed)
+            return;
+        const int speed = *mSeekRestoreSpeed;
+        mSeekRestoreSpeed.reset();
+        if (!mGame.TrySetViewerPlaybackSpeed(speed))
+            Log("Replay seek could not restore playback speed");
+    }
+
+    void ResetSeekState() noexcept
+    {
+        RestoreSeekSpeed();
+        mSeekTargetFrame.reset();
     }
 
     void UpdateViewer() noexcept
@@ -387,7 +435,7 @@ private:
     {
         mViewPublisher.End();
         mSnapshotStore.End();
-        mSeekTargetFrame.reset();
+        ResetSeekState();
         if (!mIsStarted)
             mHasStartFailed = true;
         if (!mHasLoggedFailure)
@@ -417,6 +465,7 @@ private:
     ReplayViewPublisher mViewPublisher;
     game_api::ReplayWorldSnapshotStore mSnapshotStore;
     std::optional<std::uint32_t> mSeekTargetFrame;
+    std::optional<int> mSeekRestoreSpeed;
     bool mHasViewFailed = false;
     OverlayDiagnosticsReporter mOverlayDiagnostics;
     bool mIsStarted = false;

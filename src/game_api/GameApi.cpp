@@ -243,7 +243,15 @@ bool GameApi::TrySetViewerPlaybackSpeed(int setting) noexcept
 
 bool GameApi::TryGetViewerPlaybackSpeed(int& outSetting) const noexcept
 {
-    return CanControlViewerPlaybackSpeed() && mViewerPlaybackSpeed.TryGet(outSetting);
+    if (!CanControlViewerPlaybackSpeed())
+        return false;
+    if (mViewerPlaybackSpeed.TryGet(outSetting))
+        return true;
+    const int nativeSetting = GameOptionsClass::Instance.GameSpeed;
+    if (nativeSetting < 0 || nativeSetting > 6)
+        return false;
+    outSetting = nativeSetting;
+    return true;
 }
 
 bool GameApi::CanControlViewerPlaybackSpeed() const noexcept
