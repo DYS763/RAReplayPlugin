@@ -46,6 +46,17 @@ int main()
         Require(input.RouteMessage(testWindow, WM_LBUTTONDOWN, 0, Position(120, 120)), "UI can own capture when game has none");
         input.RouteMessage(testWindow, WM_LBUTTONUP, 0, Position(30, 30));
         Require(GetCapture() == nullptr, "UI releases only its owned capture");
+        input.Drain();
+
+        HWND otherWindow = CreateWindowExW(0, L"STATIC", L"ReplayInputOther", WS_POPUP,
+            0, 0, 300, 300, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        Require(otherWindow != nullptr, "Secondary capture fixture window created");
+        SetCapture(otherWindow);
+        Require(input.RouteMessage(testWindow, WM_LBUTTONDOWN, 0, Position(120, 120)),
+            "UI click can replace an unrelated stale capture");
+        input.RouteMessage(testWindow, WM_LBUTTONUP, 0, Position(120, 120));
+        Require(GetCapture() == nullptr, "UI releases capture after replacing stale capture");
+        DestroyWindow(otherWindow);
         DestroyWindow(testWindow);
         input.Drain();
 

@@ -138,13 +138,9 @@ bool OverlayInputQueue::RouteMessage(HWND window, UINT message, WPARAM wParam, L
             if (mCapturedButtons == 0 && !mOwnsWindowCapture)
             {
                 const HWND capturedWindow = GetCapture();
-                if (capturedWindow != nullptr && capturedWindow != window)
-                {
-                    mGameButtons = static_cast<std::uint8_t>(mGameButtons | buttonMask);
-                    return false;
-                }
-                // 游戏可能已经捕获自己的窗口；复用它，但不能在 UI 抬起时释放它。
-                if (capturedWindow == nullptr && window != nullptr)
+                // 没有正在跟踪的原生拖拽时，UI 点击必须接管残留的宿主捕获；
+                // 否则宿主内部窗口的捕获会让所有 HUD 点击直接透传给游戏。
+                if (capturedWindow != window && window != nullptr)
                 {
                     SetCapture(window);
                     mOwnsWindowCapture = GetCapture() == window;
