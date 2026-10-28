@@ -119,29 +119,6 @@ public:
             // GameApi 重新绑定恢复后的当前帧和输入效果缓冲。
             return;
         }
-        if (IsPlayback())
-        {
-            std::uint32_t currentFrame = 0;
-            std::uint32_t ignoredChecksum = 0;
-            bool ignoredHasChecksum = false;
-            std::string error;
-            if (mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error))
-            {
-                const auto previousSnapshotCount = mSnapshotStore.GetRecords().size();
-                if (!mSnapshotStore.CaptureIfDue(currentFrame, error))
-                    Log(error.empty() ? "Replay world snapshot capture failed" : error.c_str());
-                else if (mSnapshotStore.GetRecords().size() > previousSnapshotCount)
-                {
-                    const auto& record = mSnapshotStore.GetRecords().back();
-                    char message[512]{};
-                    std::snprintf(message, sizeof(message),
-                        "Replay world snapshot saved: frame=%u path=%s count=%zu",
-                        record.mFrameNumber, record.mPath.c_str(),
-                        mSnapshotStore.GetRecords().size());
-                    Log(message);
-                }
-            }
-        }
         const auto previousState = mSession.GetState();
         ReportFailure(mSession.OnFrameBegin());
         if (previousState == replay::ReplayState::Playing &&
@@ -186,7 +163,10 @@ public:
         if (mIsStarted && mRequest.mMode == ReplayMode::Record)
             ReportFailure(mSession.OnFrameEnd());
         if (mIsStarted && IsPlayback() && mSession.GetState() == replay::ReplayState::Playing)
+        {
+            CaptureWorldSnapshot();
             UpdateViewer();
+        }
     }
 
     bool ProcessPlaybackFrame()
@@ -337,6 +317,34 @@ private:
         else
         {
             Log("Replay forward seek running at current playback speed");
+        }
+    }
+
+    void CaptureWorldSnapshot() noexcept
+    {
+        std::uint32_t currentFrame = 0;
+        std::uint32_t ignoredChecksum = 0;
+        bool ignoredHasChecksum = false;
+        std::string error;
+        if (!mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error))
+        {
+            Log(error.empty() ? "Unable to read frame for replay world snapshot" : error.c_str());
+            return;
+        }
+        const auto previousSnapshotCount = mSnapshotStore.GetRecords().size();
+        if (!mSnapshotStore.CaptureIfDue(currentFrame, error))
+        {
+            Log(error.empty() ? "Replay world snapshot capture failed" : error.c_str());
+            return;
+        }
+        if (mSnapshotStore.GetRecords().size() > previousSnapshotCount)
+        {
+            const auto& record = mSnapshotStore.GetRecords().back();
+            char message[512]{};
+            std::snprintf(message, sizeof(message),
+                "Replay world snapshot saved: frame=%u path=%s count=%zu phase=frame-complete",
+                record.mFrameNumber, record.mPath.c_str(), mSnapshotStore.GetRecords().size());
+            Log(message);
         }
     }
 
