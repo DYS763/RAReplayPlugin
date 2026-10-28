@@ -28,8 +28,15 @@ namespace rareplay::game_api
 namespace
 {
 constexpr wchar_t SNAPSHOT_DESCRIPTION[] = L"RAReplay checkpoint";
+constexpr wchar_t NATIVE_SAVE_DIRECTORY[] = L"Saved Games";
 constexpr std::size_t MAX_SNAPSHOT_PATH_BYTES = 512;
 constexpr std::size_t GAME_FILENAME_BUFFER_CHARS = 64;
+
+enum class SnapshotOperation
+{
+    Save,
+    Load
+};
 
 void SetError(std::string& error, const char* message)
 {
@@ -54,12 +61,30 @@ std::string MakeReplayToken(const std::string& replayName)
 
 template <typename Invoke>
 bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
-    Invoke&& invoke, std::string& error)
+    SnapshotOperation operation, Invoke&& invoke, std::string& error)
 {
     const auto fileName = snapshotPath.filename().string();
     if (fileName.empty() || fileName.size() >= GAME_FILENAME_BUFFER_CHARS)
     {
         SetError(error, "Replay world snapshot filename is too long for target game");
+        return false;
+    }
+
+    const auto nativeSaveDirectory = snapshotPath.parent_path() / NATIVE_SAVE_DIRECTORY;
+    const auto nativeSnapshotPath = nativeSaveDirectory / snapshotPath.filename();
+    std::error_code filesystemError;
+    if (!std::filesystem::create_directories(nativeSaveDirectory, filesystemError) &&
+        filesystemError)
+    {
+        error = "Unable to prepare target game's native save directory: " +
+            filesystemError.message();
+        return false;
+    }
+    if (operation == SnapshotOperation::Load &&
+        !CopyFileW(snapshotPath.c_str(), nativeSnapshotPath.c_str(), FALSE))
+    {
+        error = "Unable to stage replay world snapshot for target game load (error " +
+            std::to_string(GetLastError()) + ")";
         return false;
     }
 
@@ -82,6 +107,13 @@ bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
     if (!wasPaused)
         ScenarioClass::PauseGame();
     const bool result = invoke(fileName.c_str());
+    DWORD moveError = ERROR_SUCCESS;
+    if (result && operation == SnapshotOperation::Save &&
+        !MoveFileExW(nativeSnapshotPath.c_str(), snapshotPath.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH | MOVEFILE_COPY_ALLOWED))
+    {
+        moveError = GetLastError();
+    }
     if (!wasPaused)
         ScenarioClass::ResumeGame();
     const DWORD restoreError = SetCurrentDirectoryW(previousDirectory.data()) ? ERROR_SUCCESS : GetLastError();
@@ -90,6 +122,12 @@ bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
         error = "Target game rejected replay world snapshot file: " + snapshotPath.string();
         if (restoreError != ERROR_SUCCESS)
             error += " (also failed to restore working directory, error " + std::to_string(restoreError) + ")";
+        return false;
+    }
+    if (moveError != ERROR_SUCCESS)
+    {
+        error = "Target game completed replay world snapshot save but moving it to the replay "
+            "directory failed (error " + std::to_string(moveError) + ")";
         return false;
     }
     if (restoreError != ERROR_SUCCESS)
@@ -215,7 +253,7 @@ bool ReplayWorldSnapshotStore::RequestRestore(std::uint32_t targetFrame, std::st
         return false;
     }
     std::string invokeError;
-    if (!InvokeWithSnapshotDirectory(record->mPath,
+    if (!InvokeWithSnapshotDirectory(record->mPath, SnapshotOperation::Load,
             [](const char* fileName) { return ScenarioClass::LoadGame(fileName); }, invokeError))
     {
         error = invokeError.empty() ? "Target game rejected replay world snapshot load" : invokeError;
@@ -289,7 +327,7 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
         return false;
     }
     std::string invokeError;
-    if (!InvokeWithSnapshotDirectory(snapshotPath,
+    if (!InvokeWithSnapshotDirectory(snapshotPath, SnapshotOperation::Save,
             [](const char* fileName) {
                 return ScenarioClass::SaveGame(fileName, SNAPSHOT_DESCRIPTION, false);
             }, invokeError))
