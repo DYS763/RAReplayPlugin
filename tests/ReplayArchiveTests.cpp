@@ -238,7 +238,14 @@ void TestFrameArchiveRoundTrip()
         repeatedInfo.mRandomSeed == decodedInfo.mRandomSeed &&
         repeatedInfo.mFirstFrame == decodedInfo.mFirstFrame,
         "repeated header reads must preserve the first frame position");
+    Require(reader.GetTotalFrames() && *reader.GetTotalFrames() == 2,
+        "reader should expose the indexed total frame count");
+    Require(reader.SeekFrame(1, error), "reader should seek to an indexed frame");
     rareplay::replay::ReplayFrame decoded;
+    Require(reader.ReadFrame(decoded, error) == rareplay::replay::ReplayReadResult::Frame &&
+        decoded.mFrameNumber == 1 && decoded.mHasChecksum,
+        "reader should return the requested frame after seeking");
+    Require(reader.SeekFrame(0, error), "reader should seek back to the first frame");
     Require(reader.ReadFrame(decoded, error) == rareplay::replay::ReplayReadResult::Frame &&
         decoded.mFrameNumber == 0 && decoded.mEvents.empty(), "empty frame must round trip");
     Require(reader.ReadFrame(decoded, error) == rareplay::replay::ReplayReadResult::Frame &&
@@ -274,11 +281,8 @@ void TestReaderRejectsValidContainerWithSkippedFrame()
         "container with structurally valid but skipped stream should finalize");
     FrameReader reader;
     std::vector<std::uint8_t> metadata;
-    Require(reader.Open(path.wstring(), TargetHash(), metadata, error),
-        "SHA-valid archive should open");
-    rareplay::replay::ReplayFrame frame;
-    Require(reader.ReadFrame(frame, error) == rareplay::replay::ReplayReadResult::Error &&
-        !error.empty(), "frame reader must reject a skipped first frame");
+    Require(!reader.Open(path.wstring(), TargetHash(), metadata, error) && !error.empty(),
+        "frame reader must reject a skipped first frame while building its index");
 }
 
 void TestLegacyFrameArchiveCanBeInspected()

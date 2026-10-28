@@ -3,6 +3,7 @@
 #include "ReplayTypes.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,13 @@ public:
     virtual ~IReplaySource() = default;
     virtual bool GetSessionInfo(ReplaySessionInfo& outInfo, std::string& error) = 0;
     virtual ReplayReadResult ReadFrame(ReplayFrame& outFrame, std::string& error) = 0;
+    /** 将下一次读取定位到目标帧；不改变游戏世界。 */
+    virtual bool SeekFrame(std::uint32_t, std::string& error)
+    {
+        error = "Replay source does not support frame seeking";
+        return false;
+    }
+    virtual std::optional<std::uint32_t> GetTotalFrames() const noexcept { return std::nullopt; }
 };
 
 class IReplaySink
