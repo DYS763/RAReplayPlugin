@@ -12,6 +12,7 @@
 *.pdb
 *.ilk
 *.yrrep
+*.snapshot_*.sav
 *.partial
 *.i64
 *.idb
