@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace rareplay::viewer
@@ -62,5 +63,6 @@ private:
     ReplayPanel mSelectedPanel = ReplayPanel::Production;
     bool mSelectPanelPending = false;
     UiRect mGameContentRect;
+    std::optional<float> mSeekPreviewProgress;
 };
 }

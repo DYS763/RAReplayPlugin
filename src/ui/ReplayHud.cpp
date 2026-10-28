@@ -76,6 +76,7 @@ void ReplayHud::Draw(const viewer::ReplayViewSnapshot& snapshot, viewer::ReplayV
     if (mSessionId != snapshot.mSessionId)
     {
         mSessionId = snapshot.mSessionId;
+        mSeekPreviewProgress.reset();
         mSelectedHouseIndex = -1;
         if (!mSelectPanelPending)
         {
@@ -201,7 +202,7 @@ void ReplayHud::Draw(const viewer::ReplayViewSnapshot& snapshot, viewer::ReplayV
     if (ImGui::Begin("播放状态##ReplayFooter", nullptr, fixedFlags))
     {
         RecordWindowRegion(mInputRegions);
-        detail::DrawFrameControls(snapshot, exchange, mInputRegions);
+        detail::DrawFrameControls(snapshot, exchange, mInputRegions, mSeekPreviewProgress);
     }
     ImGui::End();
     mVisibleRegions.insert(mVisibleRegions.end(), mInputRegions.begin(), mInputRegions.end());
@@ -216,6 +217,7 @@ void ReplayHud::Reset()
     mVisibleRegions.clear();
     mSelectedPanel = ReplayPanel::Production;
     mSelectPanelPending = false;
+    mSeekPreviewProgress.reset();
 }
 
 void ReplayHud::SetIconResolver(IconResolver resolver)

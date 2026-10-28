@@ -8,7 +8,7 @@
 namespace rareplay::ui::detail
 {
 void DrawFrameControls(const viewer::ReplayViewSnapshot& snapshot, viewer::ReplayViewExchange& exchange,
-                       std::vector<UiRect>& inputRegions)
+                       std::vector<UiRect>& inputRegions, std::optional<float>& seekPreviewProgress)
 {
     constexpr const char* SPEED_LABELS[] = {
         "最快", "很快", "快", "正常", "慢", "很慢", "最慢"};
@@ -31,17 +31,22 @@ void DrawFrameControls(const viewer::ReplayViewSnapshot& snapshot, viewer::Repla
             ImGui::SameLine();
             ImGui::SetNextItemWidth(std::max(100.0f, availableWidth - 420.0f));
         }
-        float requestedProgress = progress;
+        if (!snapshot.mActive)
+            seekPreviewProgress.reset();
+        float requestedProgress = seekPreviewProgress.value_or(progress);
         if (ImGui::SliderFloat("##回放时间轴", &requestedProgress, 0.0f, 1.0f, ""))
         {
             requestedProgress = std::clamp(requestedProgress, 0.0f, 1.0f);
+            seekPreviewProgress = requestedProgress;
         }
         if (snapshot.mActive && ImGui::IsItemDeactivatedAfterEdit())
         {
+            const float submittedProgress = seekPreviewProgress.value_or(requestedProgress);
             const auto requestedFrame = static_cast<std::uint32_t>(std::lround(
-                requestedProgress * static_cast<float>(lastFrame)));
+                submittedProgress * static_cast<float>(lastFrame)));
             exchange.Submit({snapshot.mSessionId, viewer::ViewerCommandKind::SeekFrame,
                               0, std::min(requestedFrame, lastFrame)});
+            seekPreviewProgress.reset();
         }
     }
     else
