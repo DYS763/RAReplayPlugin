@@ -52,11 +52,13 @@ bool ReplayWorldSnapshotStore::Begin(std::uint32_t desiredFrameRate,
     mEnabled = false;
     mNextCaptureFrame = 0;
     mDirectory.clear();
+    mFilePrefix.clear();
     mRecords.clear();
     mIntervalFrames = ComputeIntervalFrames(desiredFrameRate);
-    if (!CreateDirectory(replayPath, error) || !LoadRecords(error))
+    if (!PrepareDirectory(replayPath, error) || !LoadRecords(error))
     {
         mDirectory.clear();
+        mFilePrefix.clear();
         mRecords.clear();
         return false;
     }
@@ -176,6 +178,7 @@ void ReplayWorldSnapshotStore::End() noexcept
     mNextCaptureFrame = 0;
     mRecords.clear();
     mDirectory.clear();
+    mFilePrefix.clear();
 }
 
 std::optional<std::uint32_t> ReplayWorldSnapshotStore::GetPendingRestoreFrame() const noexcept
@@ -192,14 +195,14 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
         SetError(error, "Scenario is not ready for replay world snapshot");
         return false;
     }
-    char filename[32]{};
-    const int written = std::snprintf(filename, sizeof(filename), "frame_%010u.sav", frameNumber);
-    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(filename))
+    char frameSuffix[16]{};
+    const int written = std::snprintf(frameSuffix, sizeof(frameSuffix), "%010u.sav", frameNumber);
+    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(frameSuffix))
     {
         SetError(error, "Replay world snapshot path is too long");
         return false;
     }
-    const auto snapshotPath = mDirectory / filename;
+    const auto snapshotPath = mDirectory / (mFilePrefix + frameSuffix);
     const std::string path = snapshotPath.string();
     if (path.empty() || path.size() >= MAX_SNAPSHOT_PATH_BYTES)
     {
@@ -232,7 +235,7 @@ std::optional<replay::WorldSnapshotRecord> ReplayWorldSnapshotStore::FindNearest
     return result;
 }
 
-bool ReplayWorldSnapshotStore::CreateDirectory(const std::filesystem::path& replayPath,
+bool ReplayWorldSnapshotStore::PrepareDirectory(const std::filesystem::path& replayPath,
     std::string& error)
 {
     if (replayPath.empty() || replayPath.filename().empty())
@@ -241,24 +244,22 @@ bool ReplayWorldSnapshotStore::CreateDirectory(const std::filesystem::path& repl
         return false;
     }
     std::error_code filesystemError;
-    auto directory = replayPath;
-    directory += L".snapshots";
-    if (directory.is_relative())
-        directory = std::filesystem::absolute(directory, filesystemError);
-    if (filesystemError)
-    {
-        error = "Unable to resolve replay snapshot directory: " + filesystemError.message();
-        return false;
-    }
-    std::filesystem::create_directories(directory, filesystemError);
-    if (filesystemError || !std::filesystem::is_directory(directory, filesystemError) ||
+    const auto directory = replayPath.parent_path();
+    if (directory.empty() || !std::filesystem::is_directory(directory, filesystemError) ||
         filesystemError)
     {
-        error = "Unable to create replay snapshot directory: " +
+        error = "Replay file directory is unavailable for world snapshots: " +
             (filesystemError ? filesystemError.message() : std::string("path is not a directory"));
         return false;
     }
+    const auto prefix = replayPath.filename().string() + ".snapshot_";
+    if (prefix.empty() || prefix.size() >= MAX_SNAPSHOT_PATH_BYTES)
+    {
+        SetError(error, "Replay world snapshot filename prefix is too long");
+        return false;
+    }
     mDirectory = directory.lexically_normal();
+    mFilePrefix = prefix;
     return true;
 }
 
@@ -271,7 +272,7 @@ bool ReplayWorldSnapshotStore::LoadRecords(std::string& error)
         error = "Unable to scan replay snapshot directory: " + filesystemError.message();
         return false;
     }
-    constexpr std::string_view PREFIX = "frame_";
+    const std::string prefix = mFilePrefix;
     constexpr std::string_view SUFFIX = ".sav";
     const std::filesystem::directory_iterator end;
     while (iterator != end)
@@ -284,12 +285,12 @@ bool ReplayWorldSnapshotStore::LoadRecords(std::string& error)
         else
         {
             const auto name = entry.path().filename().string();
-            if (name.size() == PREFIX.size() + 10 + SUFFIX.size() &&
-                name.compare(0, PREFIX.size(), PREFIX) == 0 &&
+            if (name.size() == prefix.size() + 10 + SUFFIX.size() &&
+                name.compare(0, prefix.size(), prefix) == 0 &&
                 name.compare(name.size() - SUFFIX.size(), SUFFIX.size(), SUFFIX) == 0)
             {
                 std::uint32_t frameNumber = 0;
-                const auto parseBegin = name.data() + PREFIX.size();
+                const auto parseBegin = name.data() + prefix.size();
                 const auto parseEnd = parseBegin + 10;
                 const auto parsed = std::from_chars(parseBegin, parseEnd, frameNumber);
                 if (parsed.ec == std::errc{} && parsed.ptr == parseEnd)

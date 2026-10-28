@@ -51,10 +51,11 @@ public:
 private:
     bool SaveSnapshot(std::uint32_t frameNumber, std::string& error);
     std::optional<replay::WorldSnapshotRecord> FindNearest(std::uint32_t targetFrame) const;
-    bool CreateDirectory(const std::filesystem::path& replayPath, std::string& error);
+    bool PrepareDirectory(const std::filesystem::path& replayPath, std::string& error);
     bool LoadRecords(std::string& error);
 
     std::filesystem::path mDirectory;
+    std::string mFilePrefix;
     std::vector<replay::WorldSnapshotRecord> mRecords;
     std::optional<replay::WorldSnapshotRecord> mPendingRestore;
     std::uint32_t mIntervalFrames = 1;
