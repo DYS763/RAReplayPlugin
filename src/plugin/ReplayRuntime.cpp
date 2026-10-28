@@ -337,6 +337,7 @@ private:
         else
         {
             Log("Replay forward seek running at current playback speed");
+        }
     }
 
     void RestoreSeekSpeed() noexcept
