@@ -3,6 +3,7 @@
 #include "../viewer/ReplayViewExchange.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace rareplay::ui::detail
 {
@@ -16,14 +17,31 @@ void DrawFrameControls(const viewer::ReplayViewSnapshot& snapshot, viewer::Repla
 
     if (snapshot.mTotalFrames && *snapshot.mTotalFrames > 0)
     {
+        const std::uint32_t lastFrame = *snapshot.mTotalFrames - 1;
+        const float denominator = static_cast<float>(std::max<std::uint32_t>(1, lastFrame));
         const float progress = std::clamp(static_cast<float>(snapshot.mFrameNumber) /
-                                          static_cast<float>(*snapshot.mTotalFrames), 0.0f, 1.0f);
+                                          denominator, 0.0f, 1.0f);
         ImGui::Text("帧 %u / %u", snapshot.mFrameNumber, *snapshot.mTotalFrames);
-        if (!compact)
+        if (compact)
+        {
+            ImGui::SetNextItemWidth(-1.0f);
+        }
+        else
         {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(std::max(100.0f, availableWidth - 420.0f));
-            ImGui::ProgressBar(progress, ImVec2(std::max(100.0f, availableWidth - 420.0f), 12.0f), "");
+        }
+        float requestedProgress = progress;
+        if (ImGui::SliderFloat("##回放时间轴", &requestedProgress, 0.0f, 1.0f, ""))
+        {
+            requestedProgress = std::clamp(requestedProgress, 0.0f, 1.0f);
+        }
+        if (snapshot.mActive && ImGui::IsItemDeactivatedAfterEdit())
+        {
+            const auto requestedFrame = static_cast<std::uint32_t>(std::lround(
+                requestedProgress * static_cast<float>(lastFrame)));
+            exchange.Submit({snapshot.mSessionId, viewer::ViewerCommandKind::SeekFrame,
+                              0, std::min(requestedFrame, lastFrame)});
         }
     }
     else
@@ -31,7 +49,8 @@ void DrawFrameControls(const viewer::ReplayViewSnapshot& snapshot, viewer::Repla
         ImGui::Text("当前帧 %u · 总帧未知", snapshot.mFrameNumber);
     }
 
-    ImGui::SameLine();
+    if (!compact)
+        ImGui::SameLine();
     const int speed = snapshot.mPlaybackSpeedSetting;
     const char* currentLabel = speed >= 0 && speed <= 6 ? SPEED_LABELS[speed] : "未知";
     if (snapshot.mCanChangePlaybackSpeed && snapshot.mActive)
