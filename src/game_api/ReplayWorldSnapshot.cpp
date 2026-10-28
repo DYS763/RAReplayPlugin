@@ -143,7 +143,9 @@ bool ReplayWorldSnapshotStore::Begin(std::uint32_t desiredFrameRate,
     });
     if (baseline == mRecords.end())
     {
-        mNextCaptureFrame = 0;
+        // The first world frame is still being assembled when the replay
+        // bootstrap finishes. Capture the baseline after frame 1 completes.
+        mNextCaptureFrame = 1;
     }
     else if (mRecords.size() >= MAX_SNAPSHOTS)
     {
