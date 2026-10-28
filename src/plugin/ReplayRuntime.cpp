@@ -14,6 +14,7 @@
 #include "../target/TargetImage.h"
 
 #include <filesystem>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -124,10 +125,21 @@ public:
             std::uint32_t ignoredChecksum = 0;
             bool ignoredHasChecksum = false;
             std::string error;
-            if (mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error) &&
-                !mSnapshotStore.CaptureIfDue(currentFrame, error))
+            if (mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error))
             {
-                Log(error.empty() ? "Replay world snapshot capture failed" : error.c_str());
+                const auto previousSnapshotCount = mSnapshotStore.GetRecords().size();
+                if (!mSnapshotStore.CaptureIfDue(currentFrame, error))
+                    Log(error.empty() ? "Replay world snapshot capture failed" : error.c_str());
+                else if (mSnapshotStore.GetRecords().size() > previousSnapshotCount)
+                {
+                    const auto& record = mSnapshotStore.GetRecords().back();
+                    char message[512]{};
+                    std::snprintf(message, sizeof(message),
+                        "Replay world snapshot saved: frame=%u path=%s count=%zu",
+                        record.mFrameNumber, record.mPath.c_str(),
+                        mSnapshotStore.GetRecords().size());
+                    Log(message);
+                }
             }
         }
         const auto previousState = mSession.GetState();
@@ -242,7 +254,17 @@ private:
             for (const auto& command : viewer::GetReplayViewExchange().Drain())
             {
                 if (command.mSessionId != mViewPublisher.GetSessionId())
+                {
+                    Log("Replay HUD command ignored: session mismatch");
                     continue;
+                }
+                char message[192]{};
+                std::snprintf(message, sizeof(message),
+                    "Replay HUD command: kind=%s frame=%u value=%d session=%llu",
+                    command.mKind == viewer::ViewerCommandKind::SeekFrame ? "seek" : "speed",
+                    command.mFrameNumber, command.mValue,
+                    static_cast<unsigned long long>(command.mSessionId));
+                Log(message);
                 if (command.mKind == viewer::ViewerCommandKind::SetPlaybackSpeed)
                     TrySetPlaybackViewingSpeed(command.mValue);
                 else if (command.mKind == viewer::ViewerCommandKind::SeekFrame)
@@ -329,6 +351,15 @@ private:
                     mRequest.mReplayPath, snapshotError))
             {
                 Log(snapshotError.empty() ? "Replay world snapshots disabled" : snapshotError.c_str());
+            }
+            else
+            {
+                char message[512]{};
+                std::snprintf(message, sizeof(message),
+                    "Replay world snapshots enabled: directory=%s intervalFrames=%u existing=%zu",
+                    mSnapshotStore.GetDirectory().string().c_str(),
+                    mSnapshotStore.GetIntervalFrames(), mSnapshotStore.GetRecords().size());
+                Log(message);
             }
         }
         else if (!mWriter.Open(mRequest.mReplayPath.wstring(), target::TARGET_SHA256_BYTES,

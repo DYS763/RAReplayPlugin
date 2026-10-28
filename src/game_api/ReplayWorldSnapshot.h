@@ -39,6 +39,8 @@ public:
     void End() noexcept;
 
     bool IsEnabled() const noexcept { return mEnabled; }
+    std::uint32_t GetIntervalFrames() const noexcept { return mIntervalFrames; }
+    const std::filesystem::path& GetDirectory() const noexcept { return mDirectory; }
     bool IsRestorePending() const noexcept { return mPendingRestore.has_value(); }
     std::optional<std::uint32_t> GetPendingRestoreFrame() const noexcept;
     const std::vector<replay::WorldSnapshotRecord>& GetRecords() const noexcept
