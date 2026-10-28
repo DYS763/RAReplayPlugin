@@ -272,10 +272,15 @@ void TestPlaybackEndAndNoLiveFallback()
         session.ProcessPlaybackFrame() && game.mExecuted.size() == 3 &&
         session.GetCurrentPlaybackFrame() && *session.GetCurrentPlaybackFrame() == 0,
         "playback should execute again from the relocated source frame");
+    game.mFrame = 1;
+    Require(session.OnFrameBegin() && session.OnBeforeSimulation() &&
+        session.ProcessPlaybackFrame() && game.mExecuted.size() == 4 &&
+        session.GetCurrentPlaybackFrame() && *session.GetCurrentPlaybackFrame() == 1,
+        "playback should continue contiguously after the relocated frame");
     game.mFrame = 2;
     Require(session.OnFrameBegin() && session.GetState() == ReplayState::Finished &&
-        game.mEndCount == 1 && source.mReadCount == 4 &&
-        game.mExecuted.size() == 3 && session.OnFrameBegin() && source.mReadCount == 4 &&
+        game.mEndCount == 1 && source.mReadCount == 5 &&
+        game.mExecuted.size() == 4 && session.OnFrameBegin() && source.mReadCount == 5 &&
         session.ProcessPlaybackFrame(),
         "EOF at next frame begin must end game before parser or another simulation");
 }
