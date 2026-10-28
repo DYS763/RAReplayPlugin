@@ -77,7 +77,13 @@ bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
         return false;
     }
 
+    const bool wasPaused = ScenarioClass::Instance != nullptr &&
+        ScenarioClass::Instance->IsGamePaused;
+    if (!wasPaused)
+        ScenarioClass::PauseGame();
     const bool result = invoke(fileName.c_str());
+    if (!wasPaused)
+        ScenarioClass::ResumeGame();
     const DWORD restoreError = SetCurrentDirectoryW(previousDirectory.data()) ? ERROR_SUCCESS : GetLastError();
     if (!result)
     {
