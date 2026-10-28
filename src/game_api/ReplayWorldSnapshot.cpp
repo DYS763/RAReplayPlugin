@@ -21,6 +21,7 @@ namespace rareplay::game_api
 namespace
 {
 constexpr wchar_t SNAPSHOT_DESCRIPTION[] = L"RAReplay checkpoint";
+constexpr std::size_t MAX_SNAPSHOT_PATH_BYTES = 512;
 
 void SetError(std::string& error, const char* message)
 {
@@ -200,7 +201,12 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
     }
     const auto snapshotPath = mDirectory / filename;
     const std::string path = snapshotPath.string();
-    if (path.empty() || !ScenarioClass::SaveGame(path.c_str(), SNAPSHOT_DESCRIPTION, false))
+    if (path.empty() || path.size() >= MAX_SNAPSHOT_PATH_BYTES)
+    {
+        SetError(error, "Replay world snapshot path is too long");
+        return false;
+    }
+    if (!ScenarioClass::SaveGame(path.c_str(), SNAPSHOT_DESCRIPTION, false))
     {
         SetError(error, "Target game rejected replay world snapshot save");
         return false;
