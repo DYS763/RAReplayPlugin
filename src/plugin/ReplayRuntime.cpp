@@ -7,6 +7,7 @@
 #include "../hooks/graphics/ReplayOverlayHook.h"
 #include "../viewer/ReplayViewExchange.h"
 #include "../game_api/GameApi.h"
+#include "../game_api/ReplayWorldSnapshot.h"
 #include "../replay/ReplaySession.h"
 #include "../storage/FrameReader.h"
 #include "../storage/FrameWriter.h"
@@ -14,6 +15,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace rareplay::plugin
@@ -35,7 +37,8 @@ public:
     }
     bool ShouldBlockPlayerCommands() const
     {
-        return IsPlayback() && mIsPlaybackSourceOpen && !mHasStartFailed;
+        return IsPlayback() && mIsPlaybackSourceOpen && !mHasStartFailed &&
+            mSession.GetState() == replay::ReplayState::Playing;
     }
     bool TrySetPlaybackViewingSpeed(int setting)
     {
@@ -85,6 +88,44 @@ public:
         if (!mIsStarted && !Start())
             return;
         ConsumeViewerCommands();
+        if (mSnapshotStore.IsRestorePending())
+        {
+            const auto pendingFrame = mSnapshotStore.GetPendingRestoreFrame();
+            std::uint32_t currentFrame = 0;
+            std::uint32_t ignoredChecksum = 0;
+            bool ignoredHasChecksum = false;
+            std::string error;
+            if (!pendingFrame || !mGame.ReadFrameContext(currentFrame, ignoredChecksum,
+                    ignoredHasChecksum, error))
+            {
+                Fail(error.empty() ? "Unable to inspect the restored replay frame" : error);
+                return;
+            }
+            const auto poll = mSnapshotStore.PollRestore(true, currentFrame, error);
+            if (poll == game_api::SnapshotRestorePoll::Pending)
+                return;
+            if (poll == game_api::SnapshotRestorePoll::Failed ||
+                !mSession.SeekPlayback(*pendingFrame, error))
+            {
+                Fail(error.empty() ? "Replay world snapshot restore failed" : error);
+                return;
+            }
+            // LoadGame 可能在本轮调用内立即替换世界；下一轮 BeginFrame 才能让
+            // GameApi 重新绑定恢复后的当前帧和输入效果缓冲。
+            return;
+        }
+        if (IsPlayback())
+        {
+            std::uint32_t currentFrame = 0;
+            std::uint32_t ignoredChecksum = 0;
+            bool ignoredHasChecksum = false;
+            std::string error;
+            if (mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error) &&
+                !mSnapshotStore.CaptureIfDue(currentFrame, error))
+            {
+                Log(error.empty() ? "Replay world snapshot capture failed" : error.c_str());
+            }
+        }
         const auto previousState = mSession.GetState();
         ReportFailure(mSession.OnFrameBegin());
         if (previousState == replay::ReplayState::Playing &&
@@ -136,6 +177,8 @@ public:
     {
         if (!IsPlayback())
             return false;
+        if (mSnapshotStore.IsRestorePending())
+            return true;
         if (!mIsStarted)
         {
             if (!mGame.IsWorldReady() || !Start())
@@ -147,6 +190,13 @@ public:
         mGame.DiscardLocalCommands();
         mSession.ProcessPlaybackFrame();
         ReportFailure(mSession.GetState() != replay::ReplayState::Failed);
+        if (mSeekTargetFrame && mSession.GetCurrentPlaybackFrame() &&
+            *mSession.GetCurrentPlaybackFrame() >= *mSeekTargetFrame)
+        {
+            mSeekTargetFrame.reset();
+        }
+        if (mSession.GetState() != replay::ReplayState::Playing)
+            mSeekTargetFrame.reset();
         return true;
     }
 
@@ -155,6 +205,7 @@ public:
         if (IsPlayback())
             mOverlayDiagnostics.Report(true);
         mViewPublisher.End();
+        mSnapshotStore.End();
         if (mIsStarted && mSession.GetState() == replay::ReplayState::Recording)
         {
             const bool success = mSession.Finish();
@@ -170,6 +221,7 @@ public:
     void FailUnexpected()
     {
         mViewPublisher.End();
+        mSnapshotStore.End();
         mSession.Stop();
         if (IsPlayback())
             mGame.EndReplay();
@@ -185,12 +237,48 @@ private:
         {
             for (const auto& command : viewer::GetReplayViewExchange().Drain())
             {
-                if (command.mSessionId == mViewPublisher.GetSessionId() &&
-                    command.mKind == viewer::ViewerCommandKind::SetPlaybackSpeed)
+                if (command.mSessionId != mViewPublisher.GetSessionId())
+                    continue;
+                if (command.mKind == viewer::ViewerCommandKind::SetPlaybackSpeed)
                     TrySetPlaybackViewingSpeed(command.mValue);
+                else if (command.mKind == viewer::ViewerCommandKind::SeekFrame)
+                    RequestSeek(command.mFrameNumber);
             }
         }
         catch (...) { Log("Replay HUD command was ignored after an exception"); }
+    }
+
+    void RequestSeek(std::uint32_t targetFrame) noexcept
+    {
+        if (!IsPlayback() || mSnapshotStore.IsRestorePending() ||
+            mSession.GetState() != replay::ReplayState::Playing)
+            return;
+        const auto totalFrames = mReader.GetTotalFrames();
+        if (!totalFrames || *totalFrames == 0 || targetFrame >= *totalFrames)
+        {
+            Log("Replay seek target is outside the indexed frame range");
+            return;
+        }
+        std::uint32_t currentFrame = 0;
+        std::uint32_t ignoredChecksum = 0;
+        bool ignoredHasChecksum = false;
+        std::string error;
+        if (!mGame.ReadFrameContext(currentFrame, ignoredChecksum, ignoredHasChecksum, error))
+        {
+            Log(error.empty() ? "Unable to read current frame for replay seek" : error.c_str());
+            return;
+        }
+        if (targetFrame == currentFrame)
+        {
+            mSeekTargetFrame.reset();
+            return;
+        }
+        mSeekTargetFrame = targetFrame;
+        if (targetFrame < currentFrame && !mSnapshotStore.RequestRestore(targetFrame, error))
+        {
+            mSeekTargetFrame.reset();
+            Log(error.empty() ? "Replay backward seek was rejected" : error.c_str());
+        }
     }
 
     void UpdateViewer() noexcept
@@ -231,6 +319,13 @@ private:
             {
                 return Fail(mSession.GetLastError());
             }
+            std::string snapshotError;
+            const auto desiredFrameRate = mGame.GetDesiredFrameRate();
+            if (!mSnapshotStore.Begin(desiredFrameRate == 0 ? 60 : desiredFrameRate,
+                    snapshotError))
+            {
+                Log(snapshotError.empty() ? "Replay world snapshots disabled" : snapshotError.c_str());
+            }
         }
         else if (!mWriter.Open(mRequest.mReplayPath.wstring(), target::TARGET_SHA256_BYTES,
                 mRequest.mManifest, info, error) || !mSession.StartRecording(mWriter))
@@ -256,6 +351,8 @@ private:
     bool Fail(const std::string& error)
     {
         mViewPublisher.End();
+        mSnapshotStore.End();
+        mSeekTargetFrame.reset();
         if (!mIsStarted)
             mHasStartFailed = true;
         if (!mHasLoggedFailure)
@@ -283,6 +380,8 @@ private:
     replay::ReplaySession mSession;
     replay::ReplaySessionInfo mRecordedInfo;
     ReplayViewPublisher mViewPublisher;
+    game_api::ReplayWorldSnapshotStore mSnapshotStore;
+    std::optional<std::uint32_t> mSeekTargetFrame;
     bool mHasViewFailed = false;
     OverlayDiagnosticsReporter mOverlayDiagnostics;
     bool mIsStarted = false;
