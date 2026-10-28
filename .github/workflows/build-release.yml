@@ -1,0 +1,63 @@
+name: Build Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build/github-release -G "Visual Studio 17 2022" -A Win32
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build/github-release --config Release --parallel
+
+      - name: Run tests
+        shell: pwsh
+        run: ctest --test-dir build/github-release -C Release --output-on-failure
+
+      - name: Check repository boundaries
+        shell: pwsh
+        run: .\scripts\check-boundaries.ps1
+
+      - name: Check public files
+        shell: pwsh
+        run: .\scripts\check-publication.ps1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD 'release-package'
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+          Copy-Item -LiteralPath 'build/github-release/Release/RAReplayPlugin.dll' -Destination $package
+          Copy-Item -LiteralPath 'build/handshake-smoke/SyringeHandshakeTests.exe' -Destination $package
+          Compress-Archive -Path (Join-Path $package '*') -DestinationPath 'RAReplayPlugin-release.zip' -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: RAReplayPlugin-${{ github.sha }}
+          path: RAReplayPlugin-release.zip
+          if-no-files-found: error
+
+      - name: Create GitHub Release for version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" "RAReplayPlugin-release.zip" --title "RAReplayPlugin ${{ github.ref_name }}" --generate-notes

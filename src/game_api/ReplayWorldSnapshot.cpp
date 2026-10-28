@@ -9,8 +9,12 @@ using byte = unsigned char;
 #include <ScenarioClass.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
+#include <system_error>
+#include <string_view>
 
 namespace rareplay::game_api
 {
@@ -40,14 +44,40 @@ std::uint32_t ReplayWorldSnapshotStore::ComputeIntervalFrames(
         : static_cast<std::uint32_t>(seconds);
 }
 
-bool ReplayWorldSnapshotStore::Begin(std::uint32_t desiredFrameRate, std::string& error)
+bool ReplayWorldSnapshotStore::Begin(std::uint32_t desiredFrameRate,
+    const std::filesystem::path& replayPath, std::string& error)
 {
-    End();
-    mIntervalFrames = ComputeIntervalFrames(desiredFrameRate);
-    if (!CreateDirectory(error))
-        return false;
-    mEnabled = true;
+    mPendingRestore.reset();
+    mEnabled = false;
     mNextCaptureFrame = 0;
+    mDirectory.clear();
+    mRecords.clear();
+    mIntervalFrames = ComputeIntervalFrames(desiredFrameRate);
+    if (!CreateDirectory(replayPath, error) || !LoadRecords(error))
+    {
+        mDirectory.clear();
+        mRecords.clear();
+        return false;
+    }
+    mEnabled = true;
+    const auto baseline = std::find_if(mRecords.begin(), mRecords.end(), [](const auto& record) {
+        return record.mReady && record.mFrameNumber == 0;
+    });
+    if (baseline == mRecords.end())
+    {
+        mNextCaptureFrame = 0;
+    }
+    else if (mRecords.size() >= MAX_SNAPSHOTS)
+    {
+        mNextCaptureFrame = std::numeric_limits<std::uint32_t>::max();
+    }
+    else
+    {
+        const auto next = static_cast<std::uint64_t>(mRecords.back().mFrameNumber) + mIntervalFrames;
+        mNextCaptureFrame = next > std::numeric_limits<std::uint32_t>::max()
+            ? std::numeric_limits<std::uint32_t>::max()
+            : static_cast<std::uint32_t>(next);
+    }
     error.clear();
     return true;
 }
@@ -59,8 +89,16 @@ bool ReplayWorldSnapshotStore::CaptureIfDue(std::uint32_t frameNumber, std::stri
         error.clear();
         return true;
     }
+    if (mRecords.size() >= MAX_SNAPSHOTS)
+    {
+        // 快照达到上限后只停止新增，已有快照仍可用于后退跳转。
+        error.clear();
+        return true;
+    }
     if (frameNumber < mNextCaptureFrame ||
-        (!mRecords.empty() && mRecords.back().mFrameNumber == frameNumber))
+        std::any_of(mRecords.begin(), mRecords.end(), [frameNumber](const auto& record) {
+            return record.mReady && record.mFrameNumber == frameNumber;
+        }))
     {
         error.clear();
         return true;
@@ -135,8 +173,8 @@ void ReplayWorldSnapshotStore::End() noexcept
     mPendingRestore.reset();
     mEnabled = false;
     mNextCaptureFrame = 0;
-    RemoveFiles();
     mRecords.clear();
+    mDirectory.clear();
 }
 
 std::optional<std::uint32_t> ReplayWorldSnapshotStore::GetPendingRestoreFrame() const noexcept
@@ -153,27 +191,24 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
         SetError(error, "Scenario is not ready for replay world snapshot");
         return false;
     }
-    char path[512]{};
-    const int written = std::snprintf(path, sizeof(path), "%s\\frame_%010u.sav",
-        mDirectory.c_str(), frameNumber);
-    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(path))
+    char filename[32]{};
+    const int written = std::snprintf(filename, sizeof(filename), "frame_%010u.sav", frameNumber);
+    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(filename))
     {
         SetError(error, "Replay world snapshot path is too long");
         return false;
     }
-    if (!ScenarioClass::SaveGame(path, SNAPSHOT_DESCRIPTION, false))
+    const auto snapshotPath = mDirectory / filename;
+    const std::string path = snapshotPath.string();
+    if (path.empty() || !ScenarioClass::SaveGame(path.c_str(), SNAPSHOT_DESCRIPTION, false))
     {
         SetError(error, "Target game rejected replay world snapshot save");
         return false;
     }
     mRecords.push_back({frameNumber, path, true});
-    while (mRecords.size() > MAX_SNAPSHOTS)
-    {
-        if (mRecords.size() <= 1)
-            break;
-        DeleteFileA(mRecords[1].mPath.c_str());
-        mRecords.erase(mRecords.begin() + 1);
-    }
+    std::sort(mRecords.begin(), mRecords.end(), [](const auto& left, const auto& right) {
+        return left.mFrameNumber < right.mFrameNumber;
+    });
     error.clear();
     return true;
 }
@@ -191,32 +226,87 @@ std::optional<replay::WorldSnapshotRecord> ReplayWorldSnapshotStore::FindNearest
     return result;
 }
 
-bool ReplayWorldSnapshotStore::CreateDirectory(std::string& error)
+bool ReplayWorldSnapshotStore::CreateDirectory(const std::filesystem::path& replayPath,
+    std::string& error)
 {
-    char temporaryPath[MAX_PATH]{};
-    const DWORD pathLength = GetTempPathA(static_cast<DWORD>(sizeof(temporaryPath)), temporaryPath);
-    if (pathLength == 0 || pathLength >= sizeof(temporaryPath))
+    if (replayPath.empty() || replayPath.filename().empty())
     {
-        SetError(error, "Unable to find a temporary directory for replay snapshots");
+        SetError(error, "Replay path is unavailable for world snapshots");
         return false;
     }
-    char uniquePath[MAX_PATH]{};
-    if (GetTempFileNameA(temporaryPath, "RRP", 0, uniquePath) == 0 ||
-        !DeleteFileA(uniquePath) || !CreateDirectoryA(uniquePath, nullptr))
+    std::error_code filesystemError;
+    auto directory = replayPath;
+    directory += L".snapshots";
+    if (directory.is_relative())
+        directory = std::filesystem::absolute(directory, filesystemError);
+    if (filesystemError)
     {
-        SetError(error, "Unable to create replay snapshot directory");
+        error = "Unable to resolve replay snapshot directory: " + filesystemError.message();
         return false;
     }
-    mDirectory = uniquePath;
+    std::filesystem::create_directories(directory, filesystemError);
+    if (filesystemError || !std::filesystem::is_directory(directory, filesystemError) ||
+        filesystemError)
+    {
+        error = "Unable to create replay snapshot directory: " +
+            (filesystemError ? filesystemError.message() : std::string("path is not a directory"));
+        return false;
+    }
+    mDirectory = directory.lexically_normal();
     return true;
 }
 
-void ReplayWorldSnapshotStore::RemoveFiles() noexcept
+bool ReplayWorldSnapshotStore::LoadRecords(std::string& error)
 {
-    for (const auto& record : mRecords)
-        DeleteFileA(record.mPath.c_str());
-    if (!mDirectory.empty())
-        RemoveDirectoryA(mDirectory.c_str());
-    mDirectory.clear();
+    std::error_code filesystemError;
+    std::filesystem::directory_iterator iterator(mDirectory, filesystemError);
+    if (filesystemError)
+    {
+        error = "Unable to scan replay snapshot directory: " + filesystemError.message();
+        return false;
+    }
+    constexpr std::string_view PREFIX = "frame_";
+    constexpr std::string_view SUFFIX = ".sav";
+    const std::filesystem::directory_iterator end;
+    while (iterator != end)
+    {
+        const auto entry = *iterator;
+        if (!entry.is_regular_file(filesystemError) || filesystemError)
+        {
+            filesystemError.clear();
+        }
+        else
+        {
+            const auto name = entry.path().filename().string();
+            if (name.size() == PREFIX.size() + 10 + SUFFIX.size() &&
+                name.compare(0, PREFIX.size(), PREFIX) == 0 &&
+                name.compare(name.size() - SUFFIX.size(), SUFFIX.size(), SUFFIX) == 0)
+            {
+                std::uint32_t frameNumber = 0;
+                const auto parseBegin = name.data() + PREFIX.size();
+                const auto parseEnd = parseBegin + 10;
+                const auto parsed = std::from_chars(parseBegin, parseEnd, frameNumber);
+                if (parsed.ec == std::errc{} && parsed.ptr == parseEnd)
+                    mRecords.push_back({frameNumber, entry.path().string(), true});
+            }
+        }
+        iterator.increment(filesystemError);
+        if (filesystemError)
+            break;
+    }
+    if (filesystemError)
+    {
+        error = "Unable to scan replay snapshot directory: " + filesystemError.message();
+        return false;
+    }
+    std::sort(mRecords.begin(), mRecords.end(), [](const auto& left, const auto& right) {
+        if (left.mFrameNumber != right.mFrameNumber)
+            return left.mFrameNumber < right.mFrameNumber;
+        return left.mPath < right.mPath;
+    });
+    mRecords.erase(std::unique(mRecords.begin(), mRecords.end(), [](const auto& left,
+        const auto& right) { return left.mFrameNumber == right.mFrameNumber; }), mRecords.end());
+    error.clear();
+    return true;
 }
 }

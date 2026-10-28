@@ -3,6 +3,7 @@
 #include "../replay/ReplaySeek.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,14 +22,15 @@ enum class SnapshotRestorePoll
 class ReplayWorldSnapshotStore final
 {
 public:
-    static constexpr std::uint32_t DEFAULT_INTERVAL_SECONDS = 15;
+    static constexpr std::uint32_t DEFAULT_INTERVAL_SECONDS = 20;
     static constexpr std::size_t MAX_SNAPSHOTS = 256;
 
     ~ReplayWorldSnapshotStore();
     ReplayWorldSnapshotStore(const ReplayWorldSnapshotStore&) = delete;
     ReplayWorldSnapshotStore& operator=(const ReplayWorldSnapshotStore&) = delete;
 
-    bool Begin(std::uint32_t desiredFrameRate, std::string& error);
+    bool Begin(std::uint32_t desiredFrameRate, const std::filesystem::path& replayPath,
+        std::string& error);
     bool CaptureIfDue(std::uint32_t frameNumber, std::string& error);
     bool RequestRestore(std::uint32_t targetFrame, std::string& error);
     SnapshotRestorePoll PollRestore(bool worldReady, std::uint32_t currentFrame,
@@ -49,10 +51,10 @@ public:
 private:
     bool SaveSnapshot(std::uint32_t frameNumber, std::string& error);
     std::optional<replay::WorldSnapshotRecord> FindNearest(std::uint32_t targetFrame) const;
-    bool CreateDirectory(std::string& error);
-    void RemoveFiles() noexcept;
+    bool CreateDirectory(const std::filesystem::path& replayPath, std::string& error);
+    bool LoadRecords(std::string& error);
 
-    std::string mDirectory;
+    std::filesystem::path mDirectory;
     std::vector<replay::WorldSnapshotRecord> mRecords;
     std::optional<replay::WorldSnapshotRecord> mPendingRestore;
     std::uint32_t mIntervalFrames = 1;

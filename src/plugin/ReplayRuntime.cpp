@@ -326,7 +326,7 @@ private:
             std::string snapshotError;
             const auto desiredFrameRate = mGame.GetDesiredFrameRate();
             if (!mSnapshotStore.Begin(desiredFrameRate == 0 ? 60 : desiredFrameRate,
-                    snapshotError))
+                    mRequest.mReplayPath, snapshotError))
             {
                 Log(snapshotError.empty() ? "Replay world snapshots disabled" : snapshotError.c_str());
             }
