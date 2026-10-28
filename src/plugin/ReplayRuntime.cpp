@@ -246,7 +246,7 @@ private:
             {
                 const auto name = mRequest.mReplayPath.filename().u8string();
                 mViewPublisher.Begin(std::string(name.begin(), name.end()),
-                    static_cast<int>(mRecordedInfo.mLocalHouseIndex));
+                    static_cast<int>(mRecordedInfo.mLocalHouseIndex), mReader.GetTotalFrames());
             }
             catch (...) { mHasViewFailed = true; Log("Replay HUD initialization failed; playback continues"); }
         }

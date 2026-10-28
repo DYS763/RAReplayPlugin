@@ -14,7 +14,8 @@ namespace rareplay::plugin
 class ReplayViewPublisher final
 {
 public:
-    void Begin(std::string replayName, int recordedLocalHouseIndex);
+    void Begin(std::string replayName, int recordedLocalHouseIndex,
+        std::optional<std::uint32_t> totalFrames = std::nullopt);
     void Publish(std::optional<int> playbackSpeedSetting, bool canChangeSpeed);
     void End();
     std::uint64_t GetSessionId() const noexcept { return mSessionId; }
@@ -23,6 +24,7 @@ private:
     std::uint64_t mSessionId = 0;
     std::string mReplayName;
     int mRecordedLocalHouseIndex = -1;
+    std::optional<std::uint32_t> mTotalFrames;
     std::chrono::steady_clock::time_point mNextSample;
     bool mHasLoggedLayout = false;
     game_api::ReplayWorldReader mWorldReader;

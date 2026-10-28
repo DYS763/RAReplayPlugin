@@ -8,13 +8,15 @@
 
 namespace rareplay::plugin
 {
-void ReplayViewPublisher::Begin(std::string replayName, int recordedLocalHouseIndex)
+void ReplayViewPublisher::Begin(std::string replayName, int recordedLocalHouseIndex,
+    std::optional<std::uint32_t> totalFrames)
 {
     // 当前插件每个进程只有一个播放会话；序号仍保留重进场景的隔离语义。
     static std::uint64_t nextSessionId = 0;
     mSessionId = ++nextSessionId;
     mReplayName = std::move(replayName);
     mRecordedLocalHouseIndex = recordedLocalHouseIndex;
+    mTotalFrames = totalFrames;
     mNextSample = {};
     mHasLoggedLayout = false;
     mWorldReader.Reset();
@@ -33,6 +35,7 @@ void ReplayViewPublisher::Publish(std::optional<int> playbackSpeedSetting, bool 
     snapshot->mActive = true;
     snapshot->mReplayName = mReplayName;
     snapshot->mRecordedLocalHouseIndex = mRecordedLocalHouseIndex;
+    snapshot->mTotalFrames = mTotalFrames;
     snapshot->mCanChangePlaybackSpeed = canChangeSpeed;
     mWorldReader.Read(*snapshot);
     const auto& iconStats = mWorldReader.GetIconStats();
