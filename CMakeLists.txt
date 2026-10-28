@@ -112,6 +112,7 @@ add_library(RAReplayPlugin SHARED
     src/hooks/ViewerInputScope.cpp
     src/plugin/Entry.cpp
     src/plugin/ReplayConfig.cpp
+    src/plugin/ReplaySaveDiagnostics.cpp
     src/plugin/ReplayRuntime.cpp
     src/plugin/ReplayViewPublisher.cpp
     src/plugin/OverlayDiagnosticsReporter.cpp

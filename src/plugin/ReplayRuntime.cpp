@@ -2,6 +2,7 @@
 
 #include "Diagnostics.h"
 #include "ReplayConfig.h"
+#include "ReplaySaveDiagnostics.h"
 #include "ReplayViewPublisher.h"
 #include "OverlayDiagnosticsReporter.h"
 #include "../hooks/graphics/ReplayOverlayHook.h"
@@ -509,6 +510,8 @@ void OnStartup() noexcept
             Log(error.c_str());
             return;
         }
+        if (!InstallReplaySaveDiagnostics())
+            Log("Replay save diagnostics are unavailable");
         const auto markerPath = gameDirectory / L"rareplay-runtime.bin";
         ReplayRequest request;
         std::vector<std::uint8_t> rawBytes;
