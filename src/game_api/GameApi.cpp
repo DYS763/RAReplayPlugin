@@ -7,6 +7,7 @@ using byte = unsigned char;
 
 #include <EventClass.h>
 #include <Fundamentals.h>
+#include <GameOptionsClass.h>
 #include <HouseClass.h>
 #include <ScenarioClass.h>
 #include <SessionClass.h>
