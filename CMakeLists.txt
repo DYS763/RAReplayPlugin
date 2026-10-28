@@ -84,6 +84,7 @@ add_library(ReplayGameApi STATIC
     src/assets/IconLoadCache.cpp
     src/game_api/GameApi.cpp
     src/game_api/ReplayWorldReader.cpp
+    src/game_api/ReplayWorldSnapshot.cpp
     src/game_api/icons/CameoReader.cpp
     src/game_api/PlayerInputEffects.cpp
     src/game_api/ViewerPlaybackSpeed.cpp
