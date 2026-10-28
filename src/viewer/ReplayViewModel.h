@@ -101,11 +101,12 @@ struct ReplayViewSnapshot
     std::vector<FpsSample> mRecordedFps;
 };
 
-enum class ViewerCommandKind { SetPlaybackSpeed };
+enum class ViewerCommandKind { SetPlaybackSpeed, SeekFrame };
 struct ViewerCommand
 {
     std::uint64_t mSessionId = 0;
     ViewerCommandKind mKind = ViewerCommandKind::SetPlaybackSpeed;
     int mValue = 0;
+    std::uint32_t mFrameNumber = 0;
 };
 }

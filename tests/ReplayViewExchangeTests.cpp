@@ -1,4 +1,5 @@
 #include "ReplayViewExchange.h"
+#include "../src/replay/ReplaySeek.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -46,7 +47,25 @@ int main()
         const auto commands = exchange.Drain();
         Require(commands.size() == 32 && commands.back().mValue == 99, "Bounded queue keeps newest input");
         Require(exchange.Drain().empty(), "Draining does not replay commands");
-        exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SetPlaybackSpeed, 2});
+        exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 100});
+        exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 200});
+        auto seekCommands = exchange.Drain();
+        Require(seekCommands.size() == 1 &&
+                    seekCommands.front().mKind == rareplay::viewer::ViewerCommandKind::SeekFrame &&
+                    seekCommands.front().mFrameNumber == 200,
+                "Seek commands should coalesce to the latest target frame");
+
+        rareplay::replay::ReplayFrameIndex index(2);
+        std::string indexError;
+        Require(index.AddFrame(0, 32, indexError) && index.AddFrame(1, 60, indexError) &&
+                    index.AddFrame(2, 88, indexError) && index.AddFrame(3, 116, indexError) &&
+                    index.Finish(indexError) && index.GetFrameCount() == 4,
+                "Frame index should accept a contiguous stream");
+        const auto checkpoint = index.FindCheckpoint(3);
+        Require(checkpoint && checkpoint->mFrameNumber == 2 && checkpoint->mStreamOffset == 88,
+                "Frame index should select the nearest checkpoint");
+        Require(!index.FindCheckpoint(4), "Frame index should reject targets past EOF");
+
         exchange.Clear();
         Require(!exchange.Read() && exchange.Drain().empty(), "Session end clears snapshot and commands");
         Require(held->mFrameNumber == 45, "Render reader remains valid during session end");
