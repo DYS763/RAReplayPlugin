@@ -25,6 +25,7 @@ public:
     static constexpr std::uint32_t DEFAULT_INTERVAL_SECONDS = 20;
     static constexpr std::size_t MAX_SNAPSHOTS = 256;
 
+    ReplayWorldSnapshotStore() = default;
     ~ReplayWorldSnapshotStore();
     ReplayWorldSnapshotStore(const ReplayWorldSnapshotStore&) = delete;
     ReplayWorldSnapshotStore& operator=(const ReplayWorldSnapshotStore&) = delete;
