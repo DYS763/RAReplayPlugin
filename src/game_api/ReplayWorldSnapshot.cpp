@@ -218,6 +218,13 @@ bool ReplayWorldSnapshotStore::SaveSnapshot(std::uint32_t frameNumber, std::stri
         SetError(error, "Target game rejected replay world snapshot save");
         return false;
     }
+    std::error_code fileError;
+    if (!std::filesystem::is_regular_file(snapshotPath, fileError) || fileError)
+    {
+        error = "Target game accepted replay world snapshot save but no file was created: " +
+            path;
+        return false;
+    }
     mRecords.push_back({frameNumber, path, true});
     std::sort(mRecords.begin(), mRecords.end(), [](const auto& left, const auto& right) {
         return left.mFrameNumber < right.mFrameNumber;
