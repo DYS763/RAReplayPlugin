@@ -87,9 +87,13 @@ public:
             return;
         if (!mIsStarted && !Start())
             return;
+        const bool restoreWasPending = mSnapshotStore.IsRestorePending();
         ConsumeViewerCommands();
         if (mSnapshotStore.IsRestorePending())
         {
+            // 新请求刚刚调用了 LoadGame；不要在同一轮访问可能正在重建的世界。
+            if (!restoreWasPending)
+                return;
             const auto pendingFrame = mSnapshotStore.GetPendingRestoreFrame();
             std::uint32_t currentFrame = 0;
             std::uint32_t ignoredChecksum = 0;
