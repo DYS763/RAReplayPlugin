@@ -45,7 +45,8 @@ int main()
         for (int value = 0; value < 100; ++value)
             exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SetPlaybackSpeed, value});
         const auto commands = exchange.Drain();
-        Require(commands.size() == 32 && commands.back().mValue == 99, "Bounded queue keeps newest input");
+        Require(commands.size() == 1 && commands.back().mValue == 99,
+            "Playback speed keeps only the newest input");
         Require(exchange.Drain().empty(), "Draining does not replay commands");
         exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 100});
         exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 200});
