@@ -97,12 +97,6 @@ BOOL HandleSwap(HDC drawDc, void* original) noexcept
         return reinterpret_cast<SwapFunction>(original)(drawDc);
     g_InPresentation = true;
     ++g_Swaps;
-    if (viewer::GetReplayViewExchange().IsFastForwarding())
-    {
-        ClearOverlayWindowInput();
-        g_InPresentation = false;
-        return TRUE;
-    }
     try
     {
         const HDC currentDc = wglGetCurrentDC();
@@ -114,7 +108,7 @@ BOOL HandleSwap(HDC drawDc, void* original) noexcept
             std::unique_lock lock(g_RenderMutex, std::try_to_lock);
             if (lock.owns_lock())
             {
-                if (IsActive())
+                if (!viewer::GetReplayViewExchange().IsFastForwarding() && IsActive())
                 {
                     auto& renderer = render::GetReplayOverlayRenderer();
                     // 同一窗口的 HDC 句柄可能不同，应使用真正绑定 RC 的那个。
@@ -174,8 +168,6 @@ HRESULT WINAPI PresentHook(IDirect3DDevice9* device, const RECT* source, const R
         ++g_Presents;
         g_Backend.store(ReplayGraphicsBackend::Direct3D9);
     }
-    if (viewer::GetReplayViewExchange().IsFastForwarding())
-        return D3D_OK;
     return reinterpret_cast<PresentFunction>(g_PresentOriginal)(device, source, destination, overrideWindow, dirty);
 }
 
