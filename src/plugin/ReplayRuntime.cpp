@@ -54,6 +54,10 @@ public:
     {
         return ShouldBlockPlayerCommands() && mGame.CanControlViewerPlaybackSpeed();
     }
+    bool IsFastForwarding() const noexcept
+    {
+        return mTurboFastForwarding;
+    }
 
     bool OpenPlaybackSource()
     {
@@ -308,6 +312,7 @@ private:
             return;
         }
 
+        mTurboFastForwarding = true;
         int currentSpeed = 0;
         if (mGame.TryGetViewerPlaybackSpeed(currentSpeed) && currentSpeed != 0 &&
             mGame.TrySetViewerPlaybackSpeed(0))
@@ -362,6 +367,7 @@ private:
     void ResetSeekState() noexcept
     {
         RestoreSeekSpeed();
+        mTurboFastForwarding = false;
         mSeekTargetFrame.reset();
     }
 
@@ -476,6 +482,7 @@ private:
     game_api::ReplayWorldSnapshotStore mSnapshotStore;
     std::optional<std::uint32_t> mSeekTargetFrame;
     std::optional<int> mSeekRestoreSpeed;
+    bool mTurboFastForwarding = false;
     bool mHasViewFailed = false;
     OverlayDiagnosticsReporter mOverlayDiagnostics;
     bool mIsStarted = false;
@@ -601,6 +608,12 @@ bool ShouldHandlePlaybackViewingSpeed() noexcept
 {
     OnStartup();
     return g_Runtime && g_Runtime->ShouldHandlePlaybackViewingSpeed();
+}
+
+bool IsReplayFastForwarding() noexcept
+{
+    OnStartup();
+    return g_Runtime && g_Runtime->IsFastForwarding();
 }
 
 void OnBeforeNativeEvents() noexcept

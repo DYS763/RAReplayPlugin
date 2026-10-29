@@ -17,6 +17,7 @@ bool ShouldBlockPlayerCommands() noexcept;
 bool TrySetPlaybackViewingSpeed(int setting) noexcept;
 bool TryGetPlaybackViewingSpeed(int& outSetting) noexcept;
 bool ShouldHandlePlaybackViewingSpeed() noexcept;
+bool IsReplayFastForwarding() noexcept;
 void OnBeforeNativeEvents() noexcept;
 void OnFrameComplete() noexcept;
 bool OnPlaybackParser() noexcept;
