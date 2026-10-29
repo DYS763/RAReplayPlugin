@@ -95,6 +95,8 @@ public:
             return;
         const bool restoreWasPending = mSnapshotStore.IsRestorePending();
         ConsumeViewerCommands();
+        if (IsPlayback())
+            mGame.ApplyViewerPlaybackSpeed();
         if (mSnapshotStore.IsRestorePending())
         {
             // 新请求刚刚调用了 LoadGame；不要在同一轮访问可能正在重建的世界。
@@ -145,9 +147,6 @@ public:
             mSession.GetState() == replay::ReplayState::Playing)
         {
             ReportFailure(mSession.OnBeforeSimulation());
-            if (mSession.GetState() == replay::ReplayState::Playing &&
-                mGame.IsMultiplayerSession() && !mTurboFastForwarding)
-                mGame.PaceMultiplayerViewerFrame();
         }
     }
 
@@ -309,6 +308,12 @@ private:
         mSeekTargetFrame = targetFrame;
         if (targetFrame < currentFrame)
         {
+            if (mGame.IsMultiplayerSession())
+            {
+                Log("Replay multiplayer backward seek requires replay rebuild; native snapshot restore disabled");
+                ResetSeekState();
+                return;
+            }
             if (!mSnapshotStore.RequestRestore(targetFrame, error))
             {
                 ResetSeekState();
@@ -319,18 +324,24 @@ private:
             return;
         }
 
-        mTurboFastForwarding = true;
-        viewer::GetReplayViewExchange().SetFastForwarding(true);
+        // The fixed pacing call is verified for the single-player viewer only. Multiplayer
+        // keeps rendering and audio while using the target game's fastest local setting.
+        mTurboFastForwarding = !mGame.IsMultiplayerSession();
+        viewer::GetReplayViewExchange().SetFastForwarding(mTurboFastForwarding);
         int currentSpeed = 0;
         if (mGame.TryGetViewerPlaybackSpeed(currentSpeed) && currentSpeed != 0 &&
             mGame.TrySetViewerPlaybackSpeed(0))
         {
             mSeekRestoreSpeed = currentSpeed;
-            Log("Replay forward seek entered fast-forward mode");
+            Log(mTurboFastForwarding
+                ? "Replay forward seek entered fast-forward mode"
+                : "Replay multiplayer forward seek entered native fastest mode");
         }
         else
         {
-            Log("Replay forward seek running at current playback speed");
+            Log(mTurboFastForwarding
+                ? "Replay forward seek running at current playback speed"
+                : "Replay multiplayer forward seek already uses native fastest mode");
         }
     }
 

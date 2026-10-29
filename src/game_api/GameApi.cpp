@@ -15,9 +15,7 @@ using byte = unsigned char;
 
 #include <algorithm>
 #include <bit>
-#include <chrono>
 #include <cstring>
-#include <thread>
 
 namespace rareplay::game_api
 {
@@ -242,7 +240,10 @@ void GameApi::ProcessViewerCommands()
 
 bool GameApi::TrySetViewerPlaybackSpeed(int setting) noexcept
 {
-    return CanControlViewerPlaybackSpeed() && mViewerPlaybackSpeed.TrySet(setting);
+    if (!CanControlViewerPlaybackSpeed() || !mViewerPlaybackSpeed.TrySet(setting))
+        return false;
+    ApplyViewerPlaybackSpeed();
+    return true;
 }
 
 bool GameApi::TryGetViewerPlaybackSpeed(int& outSetting) const noexcept
@@ -269,17 +270,15 @@ bool GameApi::IsMultiplayerSession() const noexcept
     return SessionClass::IsMultiplayer();
 }
 
-void GameApi::PaceMultiplayerViewerFrame() const noexcept
+void GameApi::ApplyViewerPlaybackSpeed() const noexcept
 {
     int setting = 0;
-    if (!mViewerPlaybackSpeed.TryGet(setting) || setting <= 0)
+    if (!IsMultiplayerSession() || !mViewerPlaybackSpeed.TryGet(setting) ||
+        setting < 0 || setting > 6)
         return;
-    const auto desiredFrameRate = GetDesiredFrameRate();
-    const auto frameMilliseconds = desiredFrameRate == 0
-        ? 16u : std::max(1u, 1000u / desiredFrameRate);
-    const auto delayMilliseconds = std::min(250u, frameMilliseconds *
-        static_cast<unsigned int>(setting));
-    std::this_thread::sleep_for(std::chrono::milliseconds(delayMilliseconds));
+    // Replay GameSpeed events are still executed for deterministic playback. Reapply the
+    // viewer-only value at the start of the next frame so they cannot reset local pacing.
+    GameOptionsClass::Instance.GameSpeed = setting;
 }
 
 std::uint32_t GameApi::GetDesiredFrameRate() const noexcept
