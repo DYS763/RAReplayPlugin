@@ -175,7 +175,10 @@ public:
         {
             if (!mTurboFastForwarding)
             {
-                CaptureWorldSnapshot();
+                // Multiplayer seek keeps the HUD visible, but disk I/O would make the
+                // native fastest path even slower. Capture again after the target is reached.
+                if (!mSeekTargetFrame)
+                    CaptureWorldSnapshot();
                 UpdateViewer();
             }
         }
