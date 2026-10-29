@@ -257,7 +257,8 @@ bool GameApi::TryGetViewerPlaybackSpeed(int& outSetting) const noexcept
 
 bool GameApi::CanControlViewerPlaybackSpeed() const noexcept
 {
-    return SessionClass::Instance.GameMode == GameMode::Skirmish;
+    // 多人回放只调整本地 viewer pacing，不改写录像事件或网络帧校验。
+    return SessionClass::IsSkirmish() || SessionClass::IsMultiplayer();
 }
 
 std::uint32_t GameApi::GetDesiredFrameRate() const noexcept
