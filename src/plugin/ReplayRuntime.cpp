@@ -199,12 +199,11 @@ public:
         if (mSeekTargetFrame && mSession.GetCurrentPlaybackFrame() &&
             *mSession.GetCurrentPlaybackFrame() >= *mSeekTargetFrame)
         {
-            RestoreSeekSpeed();
             char message[160]{};
             std::snprintf(message, sizeof(message),
                 "Replay seek completed: frame=%u", *mSeekTargetFrame);
             Log(message);
-            mSeekTargetFrame.reset();
+            ResetSeekState();
         }
         if (mSession.GetState() != replay::ReplayState::Playing)
             ResetSeekState();
