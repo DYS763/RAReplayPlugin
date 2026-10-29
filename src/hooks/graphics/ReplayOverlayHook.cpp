@@ -97,6 +97,12 @@ BOOL HandleSwap(HDC drawDc, void* original) noexcept
         return reinterpret_cast<SwapFunction>(original)(drawDc);
     g_InPresentation = true;
     ++g_Swaps;
+    if (viewer::GetReplayViewExchange().IsFastForwarding())
+    {
+        ClearOverlayWindowInput();
+        g_InPresentation = false;
+        return TRUE;
+    }
     try
     {
         const HDC currentDc = wglGetCurrentDC();
@@ -168,6 +174,8 @@ HRESULT WINAPI PresentHook(IDirect3DDevice9* device, const RECT* source, const R
         ++g_Presents;
         g_Backend.store(ReplayGraphicsBackend::Direct3D9);
     }
+    if (viewer::GetReplayViewExchange().IsFastForwarding())
+        return D3D_OK;
     return reinterpret_cast<PresentFunction>(g_PresentOriginal)(device, source, destination, overrideWindow, dirty);
 }
 

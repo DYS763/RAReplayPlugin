@@ -174,8 +174,11 @@ public:
             ReportFailure(mSession.OnFrameEnd());
         if (mIsStarted && IsPlayback() && mSession.GetState() == replay::ReplayState::Playing)
         {
-            CaptureWorldSnapshot();
-            UpdateViewer();
+            if (!mTurboFastForwarding)
+            {
+                CaptureWorldSnapshot();
+                UpdateViewer();
+            }
         }
     }
 

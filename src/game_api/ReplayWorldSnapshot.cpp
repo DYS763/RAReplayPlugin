@@ -70,7 +70,23 @@ bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
         return false;
     }
 
-    const auto nativeSaveDirectory = snapshotPath.parent_path() / NATIVE_SAVE_DIRECTORY;
+    std::array<wchar_t, MAX_PATH> previousDirectory{};
+    const DWORD previousLength = GetCurrentDirectoryW(
+        static_cast<DWORD>(previousDirectory.size()), previousDirectory.data());
+    if (previousLength == 0 || previousLength >= previousDirectory.size())
+    {
+        SetError(error, "Unable to read target game working directory");
+        return false;
+    }
+
+    // SaveGame resolves "Saved Games" relative to the current working
+    // directory. LoadGame also reads game assets from that directory, so
+    // loading must keep the game's own root as cwd instead of the replay
+    // directory.
+    const std::filesystem::path gameDirectory(previousDirectory.data());
+    const auto nativeSaveDirectory = operation == SnapshotOperation::Load
+        ? gameDirectory / NATIVE_SAVE_DIRECTORY
+        : snapshotPath.parent_path() / NATIVE_SAVE_DIRECTORY;
     const auto nativeSnapshotPath = nativeSaveDirectory / snapshotPath.filename();
     std::error_code filesystemError;
     if (!std::filesystem::create_directories(nativeSaveDirectory, filesystemError) &&
@@ -81,24 +97,20 @@ bool InvokeWithSnapshotDirectory(const std::filesystem::path& snapshotPath,
         return false;
     }
     if (operation == SnapshotOperation::Load &&
-        !CopyFileW(snapshotPath.c_str(), nativeSnapshotPath.c_str(), FALSE))
+        !CopyFileW(snapshotPath.c_str(), nativeSnapshotPath.c_str(), TRUE))
     {
         error = "Unable to stage replay world snapshot for target game load (error " +
             std::to_string(GetLastError()) + ")";
         return false;
     }
 
-    std::array<wchar_t, MAX_PATH> previousDirectory{};
-    const DWORD previousLength = GetCurrentDirectoryW(
-        static_cast<DWORD>(previousDirectory.size()), previousDirectory.data());
-    if (previousLength == 0 || previousLength >= previousDirectory.size())
+    const auto invocationDirectory = operation == SnapshotOperation::Load
+        ? gameDirectory : snapshotPath.parent_path();
+    if (!SetCurrentDirectoryW(invocationDirectory.c_str()))
     {
-        SetError(error, "Unable to read target game working directory");
-        return false;
-    }
-    if (!SetCurrentDirectoryW(snapshotPath.parent_path().c_str()))
-    {
-        SetError(error, "Unable to enter replay directory for world snapshot");
+        SetError(error, operation == SnapshotOperation::Load
+            ? "Unable to enter target game directory for world snapshot load"
+            : "Unable to enter replay directory for world snapshot save");
         return false;
     }
 
@@ -176,10 +188,7 @@ bool ReplayWorldSnapshotStore::Begin(std::uint32_t desiredFrameRate,
         return false;
     }
     mEnabled = true;
-    const auto baseline = std::find_if(mRecords.begin(), mRecords.end(), [](const auto& record) {
-        return record.mReady && record.mFrameNumber == 0;
-    });
-    if (baseline == mRecords.end())
+    if (mRecords.empty())
     {
         // The first world frame is still being assembled when the replay
         // bootstrap finishes. Capture the baseline after frame 1 completes.
