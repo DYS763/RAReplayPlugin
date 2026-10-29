@@ -32,3 +32,11 @@ DEFINE_HOOK(0x55D79E, ReplayViewerFramePacingHook, 6)
     R->ESI(static_cast<DWORD>(setting));
     return static_cast<DWORD>(rareplay::target::VIEWER_FRAME_PACING_CONTINUE);
 }
+
+// 前进跳转时跳过完整的 pacing 等待调用；回放帧仍由原生主循环逐帧执行。
+DEFINE_HOOK(0x55D854, ReplayViewerFramePacingCallHook, 5)
+{
+    if (rareplay::plugin::IsReplayFastForwarding())
+        return static_cast<DWORD>(rareplay::target::VIEWER_FRAME_PACING_CALL_CONTINUE);
+    return 0;
+}
