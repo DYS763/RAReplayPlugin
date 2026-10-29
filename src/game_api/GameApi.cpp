@@ -278,7 +278,7 @@ void GameApi::ApplyViewerPlaybackSpeed() noexcept
         return;
     if (!mHasOriginalRequestedFps)
     {
-        mOriginalRequestedFps = Unsorted::Network::RequestedFPS;
+        mOriginalRequestedFps = Game::Network::RequestedFPS;
         mHasOriginalRequestedFps = true;
     }
     // LAN/Internet replay pacing reads RequestedFPS rather than GameOptions.GameSpeed.
@@ -294,14 +294,14 @@ void GameApi::ApplyViewerPlaybackSpeed() noexcept
     {
         requestedFps = std::max(1, baseFps / (setting - 2));
     }
-    Unsorted::Network::RequestedFPS = requestedFps;
+    Game::Network::RequestedFPS = requestedFps;
 }
 
 void GameApi::RestoreViewerPlaybackSpeed() noexcept
 {
     if (!mHasOriginalRequestedFps)
         return;
-    Unsorted::Network::RequestedFPS = mOriginalRequestedFps;
+    Game::Network::RequestedFPS = mOriginalRequestedFps;
     mHasOriginalRequestedFps = false;
 }
 
