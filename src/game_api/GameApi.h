@@ -30,6 +30,8 @@ public:
     bool TrySetViewerPlaybackSpeed(int setting) noexcept;
     bool TryGetViewerPlaybackSpeed(int& outSetting) const noexcept;
     bool CanControlViewerPlaybackSpeed() const noexcept;
+    bool IsMultiplayerSession() const noexcept;
+    void PaceMultiplayerViewerFrame() const noexcept;
     std::uint32_t GetDesiredFrameRate() const noexcept;
     static void InvokeNativeFrameParser();
     static bool InvokeNativePreworldWait();

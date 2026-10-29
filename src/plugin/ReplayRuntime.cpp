@@ -143,7 +143,12 @@ public:
     {
         if (mIsStarted && IsPlayback() &&
             mSession.GetState() == replay::ReplayState::Playing)
+        {
             ReportFailure(mSession.OnBeforeSimulation());
+            if (mSession.GetState() == replay::ReplayState::Playing &&
+                mGame.IsMultiplayerSession() && !mTurboFastForwarding)
+                mGame.PaceMultiplayerViewerFrame();
+        }
     }
 
     void CapturePlayerInputEffect(const replay::RecordedInputEffect& effect)

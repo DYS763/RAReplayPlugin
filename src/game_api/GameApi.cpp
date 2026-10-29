@@ -13,8 +13,11 @@ using byte = unsigned char;
 #include <SessionClass.h>
 #include <Unsorted.h>
 
+#include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace rareplay::game_api
 {
@@ -259,6 +262,24 @@ bool GameApi::CanControlViewerPlaybackSpeed() const noexcept
 {
     // 多人回放只调整本地 viewer pacing，不改写录像事件或网络帧校验。
     return SessionClass::IsSkirmish() || SessionClass::IsMultiplayer();
+}
+
+bool GameApi::IsMultiplayerSession() const noexcept
+{
+    return SessionClass::IsMultiplayer();
+}
+
+void GameApi::PaceMultiplayerViewerFrame() const noexcept
+{
+    int setting = 0;
+    if (!mViewerPlaybackSpeed.TryGet(setting) || setting <= 0)
+        return;
+    const auto desiredFrameRate = GetDesiredFrameRate();
+    const auto frameMilliseconds = desiredFrameRate == 0
+        ? 16u : std::max(1u, 1000u / desiredFrameRate);
+    const auto delayMilliseconds = std::min(250u, frameMilliseconds *
+        static_cast<unsigned int>(setting));
+    std::this_thread::sleep_for(std::chrono::milliseconds(delayMilliseconds));
 }
 
 std::uint32_t GameApi::GetDesiredFrameRate() const noexcept
