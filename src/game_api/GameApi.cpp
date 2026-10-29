@@ -265,20 +265,44 @@ bool GameApi::CanControlViewerPlaybackSpeed() const noexcept
     return SessionClass::IsSkirmish() || SessionClass::IsMultiplayer();
 }
 
-bool GameApi::IsMultiplayerSession() const noexcept
+bool GameApi::IsRecordedNetworkMode() const noexcept
 {
     return SessionClass::IsMultiplayer();
 }
 
-void GameApi::ApplyViewerPlaybackSpeed() const noexcept
+void GameApi::ApplyViewerPlaybackSpeed() noexcept
 {
     int setting = 0;
-    if (!IsMultiplayerSession() || !mViewerPlaybackSpeed.TryGet(setting) ||
+    if (!IsRecordedNetworkMode() || !mViewerPlaybackSpeed.TryGet(setting) ||
         setting < 0 || setting > 6)
         return;
-    // Replay GameSpeed events are still executed for deterministic playback. Reapply the
-    // viewer-only value at the start of the next frame so they cannot reset local pacing.
-    GameOptionsClass::Instance.GameSpeed = setting;
+    if (!mHasOriginalRequestedFps)
+    {
+        mOriginalRequestedFps = Unsorted::Network::RequestedFPS;
+        mHasOriginalRequestedFps = true;
+    }
+    // LAN/Internet replay pacing reads RequestedFPS rather than GameOptions.GameSpeed.
+    // Keep the recorded frame stream unchanged and only adjust this local viewer value.
+    const int baseFps = mOriginalRequestedFps > 0 ? mOriginalRequestedFps : 30;
+    int requestedFps = baseFps;
+    if (setting <= 3)
+    {
+        const auto multiplier = 4 - setting;
+        requestedFps = std::min(1000, baseFps * multiplier);
+    }
+    else
+    {
+        requestedFps = std::max(1, baseFps / (setting - 2));
+    }
+    Unsorted::Network::RequestedFPS = requestedFps;
+}
+
+void GameApi::RestoreViewerPlaybackSpeed() noexcept
+{
+    if (!mHasOriginalRequestedFps)
+        return;
+    Unsorted::Network::RequestedFPS = mOriginalRequestedFps;
+    mHasOriginalRequestedFps = false;
 }
 
 std::uint32_t GameApi::GetDesiredFrameRate() const noexcept

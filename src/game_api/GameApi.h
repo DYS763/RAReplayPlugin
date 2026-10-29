@@ -30,9 +30,11 @@ public:
     bool TrySetViewerPlaybackSpeed(int setting) noexcept;
     bool TryGetViewerPlaybackSpeed(int& outSetting) const noexcept;
     bool CanControlViewerPlaybackSpeed() const noexcept;
-    /** 将多人回放的本地速度覆盖应用到目标游戏自己的 pacing 字段。 */
-    void ApplyViewerPlaybackSpeed() const noexcept;
-    bool IsMultiplayerSession() const noexcept;
+    /** 将多人回放的本地速度覆盖应用到目标游戏自己的请求帧率。 */
+    void ApplyViewerPlaybackSpeed() noexcept;
+    void RestoreViewerPlaybackSpeed() noexcept;
+    /** 当前录像保持 LAN/Internet 模式以校验 CRC；这不表示存在实时网络对端。 */
+    bool IsRecordedNetworkMode() const noexcept;
     std::uint32_t GetDesiredFrameRate() const noexcept;
     static void InvokeNativeFrameParser();
     static bool InvokeNativePreworldWait();
@@ -48,5 +50,7 @@ private:
     std::uint32_t mActiveFrame = 0;
     bool mIsFrameActive = false;
     bool mHasNativeChecksum = false;
+    int mOriginalRequestedFps = 0;
+    bool mHasOriginalRequestedFps = false;
 };
 }

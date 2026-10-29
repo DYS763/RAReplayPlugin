@@ -175,8 +175,8 @@ public:
         {
             if (!mTurboFastForwarding)
             {
-                // Multiplayer seek keeps the HUD visible, but disk I/O would make the
-                // native fastest path even slower. Capture again after the target is reached.
+                // Seek skips disk I/O while the target frame is still pending. Capture again
+                // after the target is reached so native fast-forward stays focused on replay.
                 if (!mSeekTargetFrame)
                     CaptureWorldSnapshot();
                 UpdateViewer();
@@ -218,6 +218,7 @@ public:
     void Finish()
     {
         ResetSeekState();
+        mGame.RestoreViewerPlaybackSpeed();
         if (IsPlayback())
             mOverlayDiagnostics.Report(true);
         mViewPublisher.End();
@@ -237,6 +238,7 @@ public:
     void FailUnexpected()
     {
         ResetSeekState();
+        mGame.RestoreViewerPlaybackSpeed();
         mViewPublisher.End();
         mSnapshotStore.End();
         mSession.Stop();
@@ -311,12 +313,6 @@ private:
         mSeekTargetFrame = targetFrame;
         if (targetFrame < currentFrame)
         {
-            if (mGame.IsMultiplayerSession())
-            {
-                Log("Replay multiplayer backward seek requires replay rebuild; native snapshot restore disabled");
-                ResetSeekState();
-                return;
-            }
             if (!mSnapshotStore.RequestRestore(targetFrame, error))
             {
                 ResetSeekState();
@@ -327,24 +323,18 @@ private:
             return;
         }
 
-        // The fixed pacing call is verified for the single-player viewer only. Multiplayer
-        // keeps rendering and audio while using the target game's fastest local setting.
-        mTurboFastForwarding = !mGame.IsMultiplayerSession();
+        mTurboFastForwarding = true;
         viewer::GetReplayViewExchange().SetFastForwarding(mTurboFastForwarding);
         int currentSpeed = 0;
         if (mGame.TryGetViewerPlaybackSpeed(currentSpeed) && currentSpeed != 0 &&
             mGame.TrySetViewerPlaybackSpeed(0))
         {
             mSeekRestoreSpeed = currentSpeed;
-            Log(mTurboFastForwarding
-                ? "Replay forward seek entered fast-forward mode"
-                : "Replay multiplayer forward seek entered native fastest mode");
+            Log("Replay forward seek entered native fastest mode");
         }
         else
         {
-            Log(mTurboFastForwarding
-                ? "Replay forward seek running at current playback speed"
-                : "Replay multiplayer forward seek already uses native fastest mode");
+            Log("Replay forward seek already uses native fastest mode");
         }
     }
 
@@ -475,6 +465,7 @@ private:
         mViewPublisher.End();
         mSnapshotStore.End();
         ResetSeekState();
+        mGame.RestoreViewerPlaybackSpeed();
         if (!mIsStarted)
             mHasStartFailed = true;
         if (!mHasLoggedFailure)
