@@ -40,11 +40,3 @@ DEFINE_HOOK(0x55D854, ReplayViewerFramePacingCallHook, 5)
         return static_cast<DWORD>(rareplay::target::VIEWER_FRAME_PACING_CALL_CONTINUE);
     return 0;
 }
-
-// LAN/Internet 录像走另一条主循环路径；该调用才是多人录像本地回放的实际等待点。
-DEFINE_HOOK(0x55DE9A, ReplayNetworkViewerFramePacingCallHook, 5)
-{
-    if (rareplay::plugin::IsReplayFastForwarding())
-        return static_cast<DWORD>(rareplay::target::VIEWER_NETWORK_FRAME_PACING_CALL_CONTINUE);
-    return 0;
-}
