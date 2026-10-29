@@ -97,6 +97,12 @@ BOOL HandleSwap(HDC drawDc, void* original) noexcept
         return reinterpret_cast<SwapFunction>(original)(drawDc);
     g_InPresentation = true;
     ++g_Swaps;
+    if (viewer::GetReplayViewExchange().IsFastForwarding())
+    {
+        ClearOverlayWindowInput();
+        g_InPresentation = false;
+        return TRUE;
+    }
     try
     {
         const HDC currentDc = wglGetCurrentDC();
@@ -143,7 +149,7 @@ HRESULT WINAPI EndSceneHook(IDirect3DDevice9* device)
                 std::unique_lock lock(g_RenderMutex, std::try_to_lock);
                 if (lock.owns_lock())
                 {
-                    if (IsActive())
+                    if (!viewer::GetReplayViewExchange().IsFastForwarding() && IsActive())
                     {
                         auto& renderer = render::GetD3D9OverlayRenderer();
                         const bool drawn = renderer.Render(device, viewer::GetReplayViewExchange());
@@ -168,6 +174,8 @@ HRESULT WINAPI PresentHook(IDirect3DDevice9* device, const RECT* source, const R
         ++g_Presents;
         g_Backend.store(ReplayGraphicsBackend::Direct3D9);
     }
+    if (viewer::GetReplayViewExchange().IsFastForwarding())
+        return D3D_OK;
     return reinterpret_cast<PresentFunction>(g_PresentOriginal)(device, source, destination, overrideWindow, dirty);
 }
 

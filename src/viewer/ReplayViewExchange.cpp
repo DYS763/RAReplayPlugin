@@ -41,8 +41,19 @@ std::vector<ViewerCommand> ReplayViewExchange::Drain()
     return commands;
 }
 
+void ReplayViewExchange::SetFastForwarding(bool value) noexcept
+{
+    mFastForwarding.store(value, std::memory_order_release);
+}
+
+bool ReplayViewExchange::IsFastForwarding() const noexcept
+{
+    return mFastForwarding.load(std::memory_order_acquire);
+}
+
 void ReplayViewExchange::Clear()
 {
+    SetFastForwarding(false);
     Publish(nullptr);
     std::lock_guard lock(mCommandMutex);
     mCommands.clear();

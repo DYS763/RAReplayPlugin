@@ -48,6 +48,8 @@ int main()
         Require(commands.size() == 1 && commands.back().mValue == 99,
             "Playback speed keeps only the newest input");
         Require(exchange.Drain().empty(), "Draining does not replay commands");
+        exchange.SetFastForwarding(true);
+        Require(exchange.IsFastForwarding(), "Turbo state is visible to the render thread");
         exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 100});
         exchange.Submit({1, rareplay::viewer::ViewerCommandKind::SeekFrame, 0, 200});
         auto seekCommands = exchange.Drain();
@@ -68,7 +70,8 @@ int main()
         Require(!index.FindCheckpoint(4), "Frame index should reject targets past EOF");
 
         exchange.Clear();
-        Require(!exchange.Read() && exchange.Drain().empty(), "Session end clears snapshot and commands");
+        Require(!exchange.Read() && exchange.Drain().empty() && !exchange.IsFastForwarding(),
+            "Session end clears snapshot, commands, and Turbo state");
         Require(held->mFrameNumber == 45, "Render reader remains valid during session end");
         std::cout << "Replay view exchange tests passed\n";
         return 0;

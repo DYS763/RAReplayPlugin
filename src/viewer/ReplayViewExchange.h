@@ -15,10 +15,13 @@ public:
     std::shared_ptr<const ReplayViewSnapshot> Read() const noexcept;
     void Submit(ViewerCommand command);
     std::vector<ViewerCommand> Drain();
+    void SetFastForwarding(bool value) noexcept;
+    bool IsFastForwarding() const noexcept;
     void Clear();
 
 private:
     std::atomic<std::shared_ptr<const ReplayViewSnapshot>> mSnapshot;
+    std::atomic<bool> mFastForwarding{false};
     std::mutex mCommandMutex;
     std::vector<ViewerCommand> mCommands;
 };

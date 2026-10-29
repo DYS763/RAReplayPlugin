@@ -318,6 +318,7 @@ private:
         }
 
         mTurboFastForwarding = true;
+        viewer::GetReplayViewExchange().SetFastForwarding(true);
         int currentSpeed = 0;
         if (mGame.TryGetViewerPlaybackSpeed(currentSpeed) && currentSpeed != 0 &&
             mGame.TrySetViewerPlaybackSpeed(0))
@@ -373,6 +374,7 @@ private:
     {
         RestoreSeekSpeed();
         mTurboFastForwarding = false;
+        viewer::GetReplayViewExchange().SetFastForwarding(false);
         mSeekTargetFrame.reset();
     }
 
