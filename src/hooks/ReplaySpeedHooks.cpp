@@ -13,7 +13,7 @@ DEFINE_HOOK(0x4E209E, ReplayViewerSpeedGetterHook, 6)
     return static_cast<DWORD>(rareplay::target::VIEWER_SPEED_GETTER_CONTINUE);
 }
 
-// 本地滑杆只改观众节奏；有效播放时跳过模拟速度写入和网络事件入队。
+// 本地滑杆只改观众节奏；GameApi 会把多人覆盖写入本地 GameSpeed，仍跳过网络事件入队。
 DEFINE_HOOK(0x4E1E1B, ReplayViewerSpeedSetterHook, 5)
 {
     if (!rareplay::plugin::ShouldHandlePlaybackViewingSpeed())
@@ -23,7 +23,7 @@ DEFINE_HOOK(0x4E1E1B, ReplayViewerSpeedSetterHook, 5)
     return static_cast<DWORD>(rareplay::target::VIEWER_SPEED_SETTER_CONTINUE);
 }
 
-// 只替换 pacing 寄存器，不修改 GameOptions.GameSpeed 或模拟对象时序。
+// 单人 viewer 只替换 pacing 寄存器；多人 pacing 使用 GameApi 的本地 GameSpeed 覆盖。
 DEFINE_HOOK(0x55D79E, ReplayViewerFramePacingHook, 6)
 {
     int setting = 0;
